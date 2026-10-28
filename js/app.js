@@ -5,7 +5,7 @@ import * as rhythmUi from './rhythm-ui.js';
 import * as settings from './settings.js';
 import { initSheets } from './ui.js';
 
-export const VERSION = '1.2.1';
+export const VERSION = '1.2.2';
 
 const tabs = { rhythm: rhythmUi, metronome, menu: settings };
 

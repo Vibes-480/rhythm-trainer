@@ -85,6 +85,37 @@ function osc(sr) {
 
 const env = (t, tau) => Math.exp(-t / tau);
 
+// Snare drum: inharmonic head modes, a stick click, wire rattle driven by the head,
+// a little saturation and a few early reflections of a small room.
+function snareVoice(sr, noise, { f, head, wires, wireLevel, tone }) {
+  const MODES = [[1, 1, 1], [1.59, 0.55, 0.7], [2.14, 0.35, 0.5], [2.3, 0.3, 0.45], [2.65, 0.18, 0.35]];
+  const oscs = MODES.map(() => osc(sr));
+  const stickHp = biquad('highpass', 5000, 0.7, sr);
+  const stickBp = biquad('bandpass', 1800, 1.2, sr);
+  const crack = biquad('bandpass', 900, 0.8, sr);
+  const wireHp = biquad('highpass', 1800, 0.7, sr);
+  const wireBp = biquad('bandpass', 3000 + f * 8, 0.5, sr);
+  const lp = biquad('lowpass', tone, 0.7, sr);
+  const taps = [[0.011, 0.18], [0.017, 0.12], [0.023, 0.08]].map(([d, g]) => [Math.round(d * sr), g]);
+  const hist = new Float32Array(taps[taps.length - 1][0] + 1);
+  let i = 0;
+  return (t) => {
+    const n = noise();
+    const bend = 1 + 0.06 * env(t, 0.015);
+    let h = 0;
+    MODES.forEach(([r, a, d], k) => { h += oscs[k](f * r * bend) * a * env(t, head * d); });
+    const stick = stickHp(n) * 0.9 * env(t, 0.0012) + stickBp(n) * 0.6 * env(t, 0.004);
+    const rattle = 0.6 + 0.4 * Math.min(1, Math.abs(h));
+    const w = (wireHp(n) * 0.7 + wireBp(n) * 0.9) * wireLevel * Math.min(1, t / 0.0015) * env(t, wires) * rattle;
+    const dry = Math.tanh(1.3 * lp(h * 0.9 + stick + w + crack(n) * 0.3 * env(t, 0.03)));
+    let y = dry;
+    for (const [d, g] of taps) y += g * hist[(i - d + hist.length) % hist.length];
+    hist[i] = dry;
+    i = (i + 1) % hist.length;
+    return y;
+  };
+}
+
 function synth(name, variant, sr) {
   const p = VARIANT_PITCH[variant] || 1;
   const TWO_PI = Math.PI * 2;
@@ -183,18 +214,9 @@ function synth(name, variant, sr) {
     }
     // ---- sight-reading voices ----
     case 'snare': {
-      len = 0.32;
+      len = 0.55;
       normalize = true;
-      const body1 = osc(sr);
-      const body2 = osc(sr);
-      const wires = biquad('bandpass', 4200, 0.6, sr);
-      const air = biquad('highpass', 2500, 0.7, sr);
-      fn = (t) => {
-        const n = noise();
-        const body = (body1(185 + 60 * env(t, 0.012)) * 0.7 + body2(330) * 0.3) * env(t, 0.05);
-        const snares = (wires(n) * 1.6 + air(n) * 0.5) * env(t, 0.11);
-        return body * 0.8 + snares + n * 0.4 * env(t, 0.002);
-      };
+      fn = snareVoice(sr, noise, { f: 200, head: 0.07, wires: 0.1, wireLevel: 1.4, tone: 14000 });
       break;
     }
     case 'snare-m1':
@@ -202,19 +224,11 @@ function synth(name, variant, sr) {
     case 'snare-m3':
     case 'snare-m4':
     case 'snare-m5': {
-      // Muffled snare: short, damped body and dark wires, like a towel on the head.
+      // Muffled: damped head and short, dark wires, like a towel on the drum.
       const f = MUFFLED_SNARE_HZ[Number(name.slice(-1)) - 1];
-      len = 0.2;
+      len = 0.3;
       normalize = true;
-      const body1 = osc(sr);
-      const body2 = osc(sr);
-      const wires = biquad('bandpass', f * 11, 0.7, sr);
-      const dark = biquad('lowpass', 3500, 0.7, sr);
-      fn = (t) => {
-        const n = noise();
-        const body = (body1(f * (1 + 0.3 * env(t, 0.01))) * 0.8 + body2(f * 1.6) * 0.2) * env(t, 0.035);
-        return body + dark(wires(n) * 1.4) * env(t, 0.06) + n * 0.15 * env(t, 0.0015);
-      };
+      fn = snareVoice(sr, noise, { f, head: 0.03, wires: 0.055, wireLevel: 0.75, tone: 3200 + f * 6 });
       break;
     }
     case 'rimshot': {

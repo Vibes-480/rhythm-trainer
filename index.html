@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14161c">
+  <meta name="description" content="Free rhythm sight-reading trainer: metronome, rhythm generator, reading mode and play-along scoring.">
+  <title>Rhythm Trainer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="title">Metronome</h1>
+  </header>
+
+  <main>
+    <!-- ================= METRONOME ================= -->
+    <section class="tab" id="tab-metronome" data-title="Metronome">
+      <div class="card bpm-card">
+        <div class="bpm-row">
+          <button class="round" data-step="metronome.bpm" data-delta="-1" aria-label="Slower">−</button>
+          <div class="bpm-big"><output id="m-bpm-out" data-show="metronome.bpm">120</output><span>BPM</span></div>
+          <button class="round" data-step="metronome.bpm" data-delta="1" aria-label="Faster">+</button>
+        </div>
+        <input type="range" min="20" max="300" step="1" data-bind="metronome.bpm" aria-label="Tempo">
+        <div class="row center">
+          <button class="btn" id="m-tap">Tap tempo</button>
+          <span class="muted small" id="m-live-bpm"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid2">
+          <div class="field">Beats per bar
+            <div class="stepper">
+              <button data-step="metronome.num" data-delta="-1">−</button>
+              <output data-show="metronome.num"></output>
+              <button data-step="metronome.num" data-delta="1">+</button>
+            </div>
+            <input type="hidden" data-bind="metronome.num" min="1" max="12">
+          </div>
+          <div class="field">Beat unit
+            <div class="seg" data-bind="metronome.den" data-num>
+              <button data-value="4">♩ 4</button><button data-value="8">♪ 8</button>
+            </div>
+          </div>
+          <div class="field">Clicks per beat
+            <div class="stepper">
+              <button data-step="metronome.sub" data-delta="-1">−</button>
+              <output data-show="metronome.sub"></output>
+              <button data-step="metronome.sub" data-delta="1">+</button>
+            </div>
+            <input type="hidden" data-bind="metronome.sub" min="1" max="6">
+          </div>
+          <label class="field">Sound
+            <select data-bind="metronome.sound" class="sound-select"></select>
+          </label>
+        </div>
+        <label class="toggle"><input type="checkbox" data-bind="metronome.markOne"><span>Mark beat one (accent)</span></label>
+        <p class="muted small">Tap a click to cycle it: accent → normal → soft → silent.</p>
+        <div id="m-pads" class="pads"></div>
+      </div>
+
+      <div class="play-row">
+        <button class="play-btn" id="m-play" aria-label="Start metronome">▶</button>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <div><div class="muted small">Practice time</div><div class="timer" id="m-elapsed">0:00</div></div>
+          <div class="right"><div class="muted small">Countdown</div><div class="timer" id="m-countdown">–</div></div>
+        </div>
+        <label class="field">Stop after
+          <select data-bind="metronome.countdown" data-num>
+            <option value="0">No countdown</option><option value="1">1 min</option><option value="2">2 min</option>
+            <option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option>
+            <option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option>
+          </select>
+        </label>
+      </div>
+
+      <details class="card">
+        <summary>Gap click</summary>
+        <p class="muted small">Plays some bars, then goes silent so you can test your internal time.</p>
+        <label class="toggle"><input type="checkbox" data-bind="metronome.gap.on"><span>Gap click on</span></label>
+        <div class="grid2">
+          <label class="field">Play bars <input type="number" min="1" max="16" data-bind="metronome.gap.play"></label>
+          <label class="field">Silent bars <input type="number" min="1" max="16" data-bind="metronome.gap.mute"></label>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary>Stepwise trainer</summary>
+        <p class="muted small">Changes the tempo automatically while you play.</p>
+        <label class="toggle"><input type="checkbox" data-bind="metronome.step.on"><span>Stepwise trainer on</span></label>
+        <div class="field">Mode
+          <div class="seg" data-bind="metronome.step.mode">
+            <button data-value="up">Increase</button><button data-value="down">Decrease</button><button data-value="alt">Alternate</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <label class="field">Change by (BPM) <input type="number" min="1" max="50" data-bind="metronome.step.amount"></label>
+          <label class="field">Every <input type="number" min="1" max="600" data-bind="metronome.step.every"></label>
+          <div class="field">Unit
+            <div class="seg" data-bind="metronome.step.unit">
+              <button data-value="bars">Bars</button><button data-value="seconds">Seconds</button>
+            </div>
+          </div>
+          <label class="field" id="m-target-field">Stop at (BPM) <input type="number" min="20" max="300" data-bind="metronome.step.target"></label>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary>Setlist</summary>
+        <p class="muted small">Save the current metronome setup (tempo, meter, clicks, trainers) and load it later.</p>
+        <div class="row">
+          <input type="text" id="m-set-name" placeholder="Name, e.g. Song A verse" maxlength="40">
+          <button class="btn" id="m-set-save">Save</button>
+        </div>
+        <ul class="list" id="m-setlist"></ul>
+      </details>
+    </section>
+
+    <!-- ================= RHYTHM ================= -->
+    <section class="tab" id="tab-rhythm" data-title="Rhythm" hidden>
+      <div class="card notation-card">
+        <div class="live-stats" id="r-live" hidden>
+          <div><b data-live="accuracy">100%</b><span>accuracy</span></div>
+          <div><b data-live="streak">0</b><span>streak</span></div>
+          <div><b data-live="misses">0</b><span>misses</span></div>
+        </div>
+        <div class="notation" id="r-notation"></div>
+        <div class="countin" id="r-countin" hidden></div>
+      </div>
+      <div class="transport">
+        <button class="btn" id="r-new">New rhythm</button>
+        <button class="play-btn small" id="r-play" aria-label="Play">▶</button>
+        <button class="btn accent" id="r-along">Play along</button>
+      </div>
+      <div class="card">
+        <div class="bpm-row compact">
+          <button class="round" data-step="gen.bpm" data-delta="-5" aria-label="Slower">−</button>
+          <div class="bpm-big small"><output data-show="gen.bpm"></output><span>BPM</span></div>
+          <button class="round" data-step="gen.bpm" data-delta="5" aria-label="Faster">+</button>
+        </div>
+        <input type="range" min="30" max="260" data-bind="gen.bpm" aria-label="Tempo">
+        <label class="field"><span>Complexity <output data-show="gen.complexity"></output></span>
+          <input type="range" min="1" max="10" data-bind="gen.complexity">
+        </label>
+      </div>
+      <details class="card" open>
+        <summary>Rhythm settings</summary>
+        <div class="grid2">
+          <div class="field">Bars
+            <div class="seg" data-bind="gen.bars" data-num>
+              <button data-value="1">1</button><button data-value="2">2</button><button data-value="4">4</button><button data-value="8">8</button>
+            </div>
+          </div>
+          <label class="field">Time signature
+            <select data-bind="gen.timeSig" id="r-timesig"></select>
+          </label>
+          <div class="field">Subdivision
+            <div class="seg" data-bind="gen.subdivision">
+              <button data-value="8th">8ths</button><button data-value="16th">16ths</button>
+            </div>
+          </div>
+          <label class="field">Presets
+            <select id="r-presets"></select>
+          </label>
+        </div>
+        <div class="toggles">
+          <label class="toggle"><input type="checkbox" data-bind="gen.triplets"><span>Triplets</span></label>
+          <label class="toggle"><input type="checkbox" data-bind="gen.ghostNotes"><span>Ghost notes</span></label>
+          <label class="toggle"><input type="checkbox" data-bind="gen.accents"><span>Accents</span></label>
+          <label class="toggle"><input type="checkbox" data-bind="gen.countIn"><span>Count-in</span></label>
+          <label class="toggle"><input type="checkbox" data-bind="gen.loop"><span>Loop</span></label>
+          <label class="toggle"><input type="checkbox" data-bind="gen.click"><span>Metronome click</span></label>
+        </div>
+        <label class="field"><span>Swing <output data-show="gen.swing" data-suffix="%"></output></span>
+          <input type="range" min="50" max="75" data-bind="gen.swing">
+        </label>
+        <label class="field"><span>Space (rests) <output data-show="gen.space" data-suffix="%"></output></span>
+          <input type="range" min="0" max="100" step="5" data-bind="gen.space">
+        </label>
+        <div class="grid2">
+          <label class="field">Rhythm sound <select data-bind="gen.sound" class="sound-select"></select></label>
+          <label class="field">Click sound <select data-bind="gen.clickSound" class="sound-select"></select></label>
+          <label class="field">Play-along passes
+            <select data-bind="gen.passes" data-num>
+              <option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="0">Until I stop</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <button class="btn" id="r-preset-save">Save as preset</button>
+          <button class="btn ghost" id="r-preset-del">Delete preset</button>
+        </div>
+      </details>
+    </section>
+
+    <!-- ================= READING ================= -->
+    <section class="tab" id="tab-reading" data-title="Reading" hidden>
+      <div class="card notation-card reading">
+        <div class="live-stats" id="rd-live" hidden>
+          <div><b data-live="accuracy">100%</b><span>accuracy</span></div>
+          <div><b data-live="streak">0</b><span>streak</span></div>
+          <div><b data-live="misses">0</b><span>misses</span></div>
+        </div>
+        <div class="notation" id="rd-notation"></div>
+        <div class="countin" id="rd-countin" hidden></div>
+      </div>
+      <div class="transport">
+        <button class="btn" id="rd-new">New page</button>
+        <button class="play-btn small" id="rd-play" aria-label="Play">▶</button>
+        <button class="btn accent" id="rd-along">Play along</button>
+      </div>
+      <div class="card">
+        <p class="muted small">Endless sight-reading: new bars keep coming until you stop. Uses the Rhythm tab's settings.</p>
+        <div class="bpm-row compact">
+          <button class="round" data-step="gen.bpm" data-delta="-5" aria-label="Slower">−</button>
+          <div class="bpm-big small"><output data-show="gen.bpm"></output><span>BPM</span></div>
+          <button class="round" data-step="gen.bpm" data-delta="5" aria-label="Faster">+</button>
+        </div>
+        <label class="field"><span>Complexity <output data-show="gen.complexity"></output></span>
+          <input type="range" min="1" max="10" data-bind="gen.complexity">
+        </label>
+        <label class="toggle"><input type="checkbox" data-bind="gen.click"><span>Metronome click</span></label>
+      </div>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="tab" id="tab-settings" data-title="Settings" hidden>
+      <div class="card">
+        <h2>Tap timing calibration</h2>
+        <p class="muted small">Phones and headphones add delay. Calibrate once per device (and again when you switch to Bluetooth headphones) so play-along scoring is fair.</p>
+        <div class="row">
+          <button class="btn accent" id="s-calibrate">Calibrate</button>
+          <span id="s-cal-out" class="muted"></span>
+        </div>
+        <label class="field"><span>Manual offset <output data-show="prefs.calibrationMs" data-suffix=" ms"></output></span>
+          <input type="range" min="-250" max="250" step="1" data-bind="prefs.calibrationMs">
+        </label>
+      </div>
+      <div class="card">
+        <h2>Play-along</h2>
+        <div class="field">Timing strictness
+          <div class="seg" data-bind="prefs.strictness">
+            <button data-value="relaxed">Relaxed</button><button data-value="normal">Normal</button><button data-value="strict">Strict</button>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox" data-bind="prefs.hearRhythm"><span>Hear the rhythm while playing along</span></label>
+        <label class="toggle"><input type="checkbox" data-bind="prefs.keepAwake"><span>Keep screen on while playing</span></label>
+      </div>
+      <div class="card">
+        <h2>Appearance</h2>
+        <div class="seg" data-bind="prefs.theme">
+          <button data-value="auto">Auto</button><button data-value="light">Light</button><button data-value="dark">Dark</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>History</h2>
+        <ul class="list" id="s-history"></ul>
+        <button class="btn ghost" id="s-history-clear">Clear history</button>
+      </div>
+      <div class="card">
+        <h2>Backup</h2>
+        <p class="muted small">Everything is stored on this device only. Export a backup file to keep your presets, setlist and history safe.</p>
+        <div class="row">
+          <button class="btn" id="s-export">Export</button>
+          <label class="btn">Import<input type="file" id="s-import" accept="application/json,.json" hidden></label>
+        </div>
+      </div>
+      <p class="muted small center">Rhythm Trainer · free and offline · <span id="s-version"></span></p>
+    </section>
+  </main>
+
+  <div class="tap-pad" id="tap-pad" hidden>
+    <div class="tap-label">TAP</div>
+    <button class="btn ghost stop-along" id="tap-stop">Stop</button>
+  </div>
+
+  <nav class="tabbar">
+    <button data-tab="metronome" aria-label="Metronome">
+      <svg viewBox="0 0 24 24"><path d="M9 3h6l4 18H5L9 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 16l5-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Metronome</span>
+    </button>
+    <button data-tab="rhythm" aria-label="Rhythm">
+      <svg viewBox="0 0 24 24"><path d="M7 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="5" cy="18" r="2.5" fill="currentColor"/><circle cx="15" cy="16" r="2.5" fill="currentColor"/></svg>
+      <span>Rhythm</span>
+    </button>
+    <button data-tab="reading" aria-label="Reading">
+      <svg viewBox="0 0 24 24"><path d="M3 5h7a2 2 0 012 2v13a2 2 0 00-2-2H3zM21 5h-7a2 2 0 00-2 2v13a2 2 0 012-2h7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span>Reading</span>
+    </button>
+    <button data-tab="settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <dialog id="modal"><div id="modal-body"></div></dialog>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="js/vendor/vexflow.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

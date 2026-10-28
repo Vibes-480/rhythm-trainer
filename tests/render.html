@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><body style="background:#fff;margin:0">
+<div id="out"></div>
+<script src="../js/vendor/vexflow.js"></script>
+<script type="module">
+import { generateBar, makeRng, TIME_SIGNATURES, DEFAULT_SETTINGS } from '../js/rhythm.js';
+import { renderRow } from '../js/notation.js';
+const rng = makeRng(1);
+const out = document.getElementById('out');
+const errors = [];
+const params = new URLSearchParams(location.search);
+const stress = params.has('stress');
+window.parenthesis = !!Vex.Flow.Parenthesis;
+for (const timeSig of TIME_SIGNATURES) for (const subdivision of ['8th','16th']) for (let c = 1; c <= 10; c += stress ? 1 : 9) {
+  const s = { ...DEFAULT_SETTINGS, timeSig, subdivision, complexity: c, triplets: true, ghostNotes: true, accents: true, space: 20 };
+  const reps = stress ? 15 : 1;
+  for (let r = 0; r < reps; r++) {
+    const bars = [generateBar(s, rng), generateBar(s, rng)];
+    const div = document.createElement('div');
+    if (!stress) { const l = document.createElement('div'); l.textContent = `${timeSig} ${subdivision} c${c}`; l.style.font='12px sans-serif'; out.append(l); }
+    out.append(div);
+    try { renderRow(div, bars, { width: 390, showTimeSig: true }); } catch (e) { errors.push(`${timeSig} ${subdivision} c${c}: ${e.message}`); }
+    if (stress) div.remove();
+  }
+}
+window.renderErrors = errors;
+window.done = true;
+</script>

@@ -33,7 +33,6 @@ export class PlayAlong {
     active?.end(false);
     active = this;
     this.meta = meta;
-    this.liveEl.hidden = false;
     this.updateLive();
     const p = pad();
     p.hidden = false;
@@ -97,7 +96,6 @@ export class PlayAlong {
     document.getElementById('tap-stop').removeEventListener('pointerdown', this.handleStop);
     window.removeEventListener('keydown', this.handleKey);
     this.scorer.finish(audio.heardTime());
-    this.liveEl.hidden = true;
     const sum = this.scorer.summary();
     if (sum.notes === 0) return null;
     state.history.unshift({
@@ -119,24 +117,28 @@ function timingText(ms) {
 export function showSummaryModal(sum, meta, onDrill) {
   const missed = sum.mostMissed;
   const html = `
-    <h2>Play-along results</h2>
-    <div class="summary-acc">${sum.accuracy}%</div>
-    <p class="muted center small">accuracy · ${escapeHtml(meta.bpm)} BPM · ${escapeHtml(meta.timeSig)} · complexity ${escapeHtml(meta.complexity)}</p>
-    <div class="summary-grid">
-      <div><b>${sum.bestStreak}</b><span>longest streak</span></div>
-      <div><b>${sum.hits}/${sum.notes}</b><span>notes hit</span></div>
-      <div><b>${sum.misses}</b><span>misses</span></div>
-      <div><b>${sum.extras}</b><span>extra taps</span></div>
-      <div><b>${sum.perfect}</b><span>perfect</span></div>
-      <div><b>${sum.hits ? sum.avgAbsOffsetMs : 0} ms</b><span>avg error</span></div>
-    </div>
-    ${sum.hits ? `<p class="small">On average you were <b>${timingText(sum.avgOffsetMs)}</b>.</p>` : ''}
-    ${missed.length ? `<h2>Most missed groupings</h2><div class="missed">${missed
-      .map((m, i) => `<div><div class="notation" data-missed="${i}"></div>missed ${m.missed} of ${m.total}</div>`)
-      .join('')}</div>` : '<p class="small">No missed notes. Nice!</p>'}
-    <div class="row" style="justify-content:flex-end;margin-top:14px">
-      ${missed.length && onDrill ? '<button class="btn" id="drill-btn">Drill these</button>' : ''}
-      <button class="btn accent" data-close>Done</button>
+    <div class="sheet-head"><button class="sheet-close" data-close>CLOSE</button></div>
+    <div class="modal-pad">
+      <div class="recent">MOST RECENT</div>
+      <div class="stat3">
+        <div><b>${sum.accuracy}%</b><span>Accuracy</span></div>
+        <div><b>${sum.bestStreak}</b><span>Longest<br>Streak</span></div>
+        <div><b>${sum.misses}</b><span>Misses</span></div>
+      </div>
+      <div class="stat-line">
+        <span>${sum.hits}/${sum.notes} notes hit</span>
+        <span>${sum.extras} extra taps</span>
+        <span>${sum.perfect} perfect</span>
+        ${sum.hits ? `<span>on average ${timingText(sum.avgOffsetMs)}</span>` : ''}
+      </div>
+      <p class="stat-line">${escapeHtml(meta.bpm)} BPM · ${escapeHtml(meta.timeSig)} · complexity ${escapeHtml(meta.complexity)}</p>
+      ${missed.length ? `<div class="missed-title">Most Missed Groupings</div><div class="missed">${missed
+        .map((m, i) => `<div><div class="notation" data-missed="${i}"></div>missed ${m.missed} of ${m.total}</div>`)
+        .join('')}</div>` : '<p class="center">No missed notes. Nice!</p>'}
+      <div class="modal-actions">
+        ${missed.length && onDrill ? '<button class="pill ghostbtn" id="drill-btn">Drill these</button>' : ''}
+        <button class="pill" data-close>Done</button>
+      </div>
     </div>`;
   const { body, close } = openModal(html);
   missed.forEach((m, i) => {

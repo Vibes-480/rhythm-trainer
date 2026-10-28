@@ -1,37 +1,40 @@
-// Endless sight-reading: rows of new bars keep scrolling in until you stop.
+// Reading Mode: rows of new bars keep scrolling in until you stop.
 import { generateBar } from './rhythm.js';
 import { renderRow, barMinWidth, setNoteClass } from './notation.js';
-import { state, on } from './store.js';
+import { state } from './store.js';
 import { scheduler, claim, release, isOwner } from './transport.js';
-import { PlayAlong } from './playalong.js';
-import { rhythmBarEvents, countInBar, sessionMeta } from './playback.js';
+import { rhythmBarEvents, countInBar } from './playback.js';
 import { escapeHtml } from './ui.js';
 
 const $ = (id) => document.getElementById(id);
-const VISIBLE_ROWS = 3;
+const VISIBLE_ROWS = 4;
 
 let bars = [];
 let rows = []; // { start, count, el }
 let firstVisible = 0;
 let noteMap = new Map();
 let playing = false;
-let along = null;
 let lastPlaying = null;
 let width = 360;
+let hooks = {};
 
 function bar(i) {
   while (bars.length <= i) bars.push(generateBar(state.gen));
   return bars[i];
 }
 
-// Rows are filled greedily with as many bars as fit the screen width.
+// One bar per row on phones (like a printed reading sheet); more on wide screens.
+function maxPerRow() {
+  return width >= 600 ? 2 : 1;
+}
+
 function row(r) {
   while (rows.length <= r) {
     const prev = rows[rows.length - 1];
     const start = prev ? prev.start + prev.count : 0;
     let count = 0;
     let used = start === 0 ? 30 : 0;
-    while (count < 4) {
+    while (count < maxPerRow()) {
       const need = barMinWidth(bar(start + count));
       if (count > 0 && used + need > width) break;
       used += need;
@@ -58,9 +61,9 @@ function drawRow(r) {
   return el;
 }
 
-function reset() {
+export function reset() {
   const container = $('rd-notation');
-  width = Math.floor(container.clientWidth || 360);
+  width = Math.floor(container.clientWidth || 360) - 18; // minus the row's thick edges
   bars = [];
   rows = [];
   firstVisible = 0;
@@ -93,7 +96,6 @@ function advanceTo(i) {
   const container = $('rd-notation');
   while (firstVisible < r) {
     const old = rows[firstVisible];
-    // Forget notes of rows that scrolled away.
     for (let b = old.start; b < old.start + old.count; b++) {
       for (const k of noteMap.keys()) if (k.startsWith(`${b}:`)) noteMap.delete(k);
     }
@@ -106,13 +108,13 @@ function advanceTo(i) {
 }
 
 function showCountIn(n) {
-  const el = $('rd-countin');
+  const el = $('r-countin');
   el.hidden = n == null;
   if (n != null) el.textContent = n;
 }
 
-function makeSource(alongMode) {
-  const silent = alongMode && !state.prefs.hearRhythm;
+function makeSource(along) {
+  const silent = along && !state.prefs.hearRhythm;
   let countDone = false;
   let i = 0;
   return {
@@ -127,14 +129,12 @@ function makeSource(alongMode) {
         return countInBar(g, b0.num, b0.den);
       }
       const idx = i++;
-      // Make sure the row holding this bar (and the ones after it) exist.
       while (rowOfBar(idx) < 0) row(rows.length);
       const b = bar(idx);
       const out = { beats: b.num, bpm: g.bpm, events: rhythmBarEvents(b, g, { silent }), info: { barIndex: idx } };
       if (along) {
-        const a = along;
         out.onSchedule = (ev, t) => {
-          if (ev.note) a.add({ time: t, key: ev.key, groupData: b.groups[ev.group], ref: `${idx}:${ev.group}:${ev.slot}` });
+          if (ev.note) along.add({ time: t, key: ev.key, groupData: b.groups[ev.group], ref: `${idx}:${ev.group}:${ev.slot}` });
         };
       }
       return out;
@@ -142,7 +142,7 @@ function makeSource(alongMode) {
   };
 }
 
-function onResult(type, e) {
+export function onResult(type, e) {
   if (type === 'extra') return;
   const n = noteMap.get(e.ref);
   if (!n) return;
@@ -151,17 +151,17 @@ function onResult(type, e) {
   else setNoteClass(n, e.grade === 'perfect' || e.grade === 'good' ? 'hit' : 'off');
 }
 
-function start(alongMode) {
-  // A page that was already read is replaced with fresh bars.
+export function isPlaying() {
+  return playing;
+}
+
+// along: a PlayAlong session or null. h.onStopped is called however playback ends.
+export function start(along, h = {}) {
+  hooks = h;
   if (firstVisible > 0 || !rows.length) reset();
   claim('reading', () => stopUi());
   playing = true;
-  if (alongMode) {
-    along = new PlayAlong({ mode: 'reading', liveEl: $('rd-live'), onResult, onStopRequest: () => stop() });
-    along.start(sessionMeta(state.gen));
-    window.scrollTo({ top: 0 });
-  }
-  scheduler.start(makeSource(alongMode), {
+  scheduler.start(makeSource(along), {
     onEvent: (ev, info) => {
       if (ev.countIn != null) {
         showCountIn(ev.countIn);
@@ -177,49 +177,32 @@ function start(alongMode) {
       if (info?.countIn) return;
       showCountIn(null);
       advanceTo(info.barIndex);
+      hooks.onBar?.(info);
     },
   });
-  $('rd-play').textContent = '■';
-  $('rd-play').classList.add('playing');
-  $('rd-along').textContent = alongMode ? 'Stop' : 'Play along';
 }
 
 function stopUi() {
+  if (!playing) return;
   playing = false;
   showCountIn(null);
   if (lastPlaying) setNoteClass(lastPlaying, 'playing', false);
   lastPlaying = null;
-  $('rd-play').textContent = '▶';
-  $('rd-play').classList.remove('playing');
-  $('rd-along').textContent = 'Play along';
-  const a = along;
-  along = null;
-  a?.end(true);
+  const h = hooks;
+  hooks = {};
+  h.onStopped?.();
 }
 
 export function stop() {
   if (isOwner('reading')) scheduler.stop();
   release('reading');
-  if (playing) stopUi();
+  stopUi();
 }
 
-export function onShow() {
-  if (!playing && (!rows.length || Math.floor($('rd-notation').clientWidth) !== width)) reset();
+export function needsRedraw() {
+  return !rows.length || Math.floor($('rd-notation').clientWidth) - 18 !== width;
 }
 
-export function init() {
-  $('rd-new').addEventListener('click', () => {
-    if (playing) stop();
-    reset();
-  });
-  $('rd-play').addEventListener('click', () => (playing ? stop() : start(false)));
-  $('rd-along').addEventListener('click', () => (playing ? stop() : start(true)));
-  on('gen', (path) => {
-    const key = path.split('.')[1];
-    if (key === 'bpm' && playing && isOwner('reading')) scheduler.setBpm(state.gen.bpm);
-    else if (!playing && rows.length && !['bpm', 'click', 'clickSound', 'sound', 'swing', 'passes', 'loop', 'countIn'].includes(key)) {
-      if (!$('tab-reading').hidden) reset();
-      else rows = [];
-    }
-  });
+export function invalidate() {
+  rows = [];
 }

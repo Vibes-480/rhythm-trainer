@@ -7,11 +7,11 @@ const KEY = 'rhythm-trainer.v1';
 export function defaults() {
   return {
     metronome: {
-      bpm: 120, num: 4, den: 4, sub: 1, markOne: true, sound: 'click', pads: null, countdown: 0,
+      bpm: 120, num: 4, den: 4, sub: 1, markOne: true, sound: 'click', pads: null, countdown: 0, volume: 80, elapsed: 0,
       gap: { on: false, play: 2, mute: 2 },
       step: { on: false, mode: 'up', amount: 5, every: 4, unit: 'bars', target: 160 },
     },
-    gen: { ...DEFAULT_SETTINGS, passes: 2 },
+    gen: { ...DEFAULT_SETTINGS, passes: 2, readingMode: false, playAlong: false, readingMinutes: 1 },
     presets: [],
     setlist: [],
     history: [],
@@ -73,6 +73,11 @@ export function set(path, value) {
   emit(path, value);
 }
 
+// Display formatters for data-show="..." data-format="...".
+const FORMATS = {
+  swing: (v) => `${Math.round((v - 50) * 4)}%`,
+};
+
 const listeners = [];
 // Subscribe to changes of any path starting with `prefix`.
 export function on(prefix, fn) {
@@ -100,13 +105,17 @@ export function refresh(path) {
       el.querySelectorAll('button').forEach((b) => b.classList.toggle('on', String(v) === b.dataset.value));
     } else if (el.type === 'checkbox') {
       el.checked = !!v;
+    } else if (el.tagName === 'SELECT') {
+      el.value = String(v);
     } else if (document.activeElement !== el || el.type === 'range') {
       el.value = v;
     }
   });
   const showSel = path ? `[data-show="${path}"]` : '[data-show]';
   document.querySelectorAll(showSel).forEach((el) => {
-    el.textContent = get(el.dataset.show) + (el.dataset.suffix || '');
+    const v = get(el.dataset.show);
+    const fmt = FORMATS[el.dataset.format];
+    el.textContent = (fmt ? fmt(v) : v) + (el.dataset.suffix || '');
   });
 }
 
@@ -124,6 +133,7 @@ export function bindAll(root = document) {
     }
     const read = () => {
       if (el.type === 'checkbox') return el.checked;
+      if ('bool' in el.dataset) return el.value === 'true';
       if (el.type === 'range' || el.type === 'number' || 'num' in el.dataset) {
         const n = Number(el.value);
         return Number.isFinite(n) ? clampFor(path, n) : get(path);

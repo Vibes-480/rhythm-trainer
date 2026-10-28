@@ -35,10 +35,12 @@ function calibrate() {
   let finished = false;
 
   const { body, close } = openModal(`
-    <h2>Calibrate</h2>
-    <p class="small">Listen to the first 4 clicks, then tap the big button exactly with each click.</p>
-    <button class="btn accent" id="cal-pad" style="width:100%;height:38vh;font-size:28px;border-radius:16px">Get ready…</button>
-    <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button></div>`, () => {
+    <div class="sheet-head"><button class="sheet-close" data-close>CLOSE</button></div>
+    <div class="modal-pad">
+      <h3>Calibrate</h3>
+      <p class="hint">Listen to the first 4 clicks, then tap the big button exactly with each click.</p>
+      <button class="pill" id="cal-pad" style="width:100%;height:38vh;font-size:28px;border-radius:16px;justify-content:center">Get ready…</button>
+    </div>`, () => {
     if (!finished) {
       scheduler.stop();
       release('calibration');
@@ -75,11 +77,11 @@ function calibrate() {
       const off = medianOffset(taps.filter((t) => t >= ignoreBefore), clicks);
       if (off === null) {
         audio.latencyOffset = saved;
-        body.innerHTML = '<h2>Calibrate</h2><p>Not enough taps lined up with the clicks. Try again and tap along with every click.</p><div class="row" style="justify-content:flex-end"><button class="btn accent" data-close>OK</button></div>';
+        body.innerHTML = '<div class="sheet-head"><button class="sheet-close" data-close>CLOSE</button></div><div class="modal-pad"><h3>Calibrate</h3><p>Not enough taps lined up with the clicks. Try again and tap along with every click.</p><div class="modal-actions"><button class="pill" data-close>OK</button></div></div>';
       } else {
         const ms = Math.max(-250, Math.min(250, Math.round(off * 1000)));
         set('prefs.calibrationMs', ms);
-        body.innerHTML = `<h2>Calibrated</h2><p>Your taps arrived <b>${Math.abs(ms)} ms ${ms >= 0 ? 'after' : 'before'}</b> the clicks. Play-along now corrects for this on this device.</p><div class="row" style="justify-content:flex-end"><button class="btn accent" data-close>Done</button></div>`;
+        body.innerHTML = `<div class="sheet-head"><button class="sheet-close" data-close>CLOSE</button></div><div class="modal-pad"><h3>Calibrated</h3><p>Your taps arrived <b>${Math.abs(ms)} ms ${ms >= 0 ? 'after' : 'before'}</b> the clicks. Play Along now corrects for this on this phone.</p><div class="modal-actions"><button class="pill" data-close>Done</button></div></div>`;
         $('s-cal-out').textContent = `Offset ${ms} ms`;
       }
       body.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => close()));
@@ -98,7 +100,7 @@ function renderHistory() {
     const d = new Date(h.date);
     const when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     return `<li><span class="grow"><b>${h.accuracy}%</b> · ${escapeHtml(h.mode)} · ${escapeHtml(h.timeSig)} · ${h.bpm} BPM · lvl ${h.complexity}<br>
-      <span class="muted small">${when} · best streak ${h.bestStreak} · ${h.notes} notes</span></span></li>`;
+      <span class="hint">${when} · best streak ${h.bestStreak} · ${h.notes} notes</span></span></li>`;
   }).join('');
 }
 
@@ -139,7 +141,8 @@ export function applyTheme() {
   else document.documentElement.dataset.theme = t;
   const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   const meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.content = dark ? '#101216' : '#f4f5f7';
+  const metro = document.body.classList.contains('metro-on');
+  if (meta) meta.content = metro ? (dark ? '#24585b' : '#59aeb2') : dark ? '#0e1415' : '#eef2f2';
 }
 
 export function init({ onReplaced }) {

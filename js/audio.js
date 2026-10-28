@@ -1,16 +1,27 @@
 // Audio engine: synthesized sounds, sample-accurate lookahead scheduler,
 // and a mapping from tap timestamps to the audio clock.
 
-export const SOUNDS = {
+// Metronome-style clicks and drum-like voices for sight-reading are kept separate,
+// so the rhythm you read never sounds like the click.
+export const METRO_SOUNDS = {
   click: 'Click',
   woodblock: 'Woodblock',
   beep: 'Beep',
   rim: 'Rim click',
   cowbell: 'Cowbell',
-  snare: 'Snare',
   hihat: 'Hi-hat',
-  kick: 'Kick',
 };
+
+export const RHYTHM_SOUNDS = {
+  snare: 'Snare',
+  clap: 'Clap',
+  xstick: 'Cross-stick',
+  conga: 'Conga',
+  tom: 'Tom',
+  marimba: 'Marimba',
+};
+
+export const SOUNDS = { ...METRO_SOUNDS, ...RHYTHM_SOUNDS };
 
 // Pitch factor per variant for pitched sounds.
 const VARIANT_PITCH = { accent: 1.3, normal: 1, sub: 0.8, ghost: 1 };
@@ -23,35 +34,67 @@ function noiseGen(seed = 1) {
   };
 }
 
+// RBJ biquad filter, processed one sample at a time.
+function biquad(type, f0, q, sr) {
+  const w = (2 * Math.PI * f0) / sr;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * q);
+  let b0, b1, b2;
+  if (type === 'lowpass') [b0, b1, b2] = [(1 - cos) / 2, 1 - cos, (1 - cos) / 2];
+  else if (type === 'highpass') [b0, b1, b2] = [(1 + cos) / 2, -(1 + cos), (1 + cos) / 2];
+  else [b0, b1, b2] = [alpha, 0, -alpha]; // bandpass
+  const a0 = 1 + alpha;
+  const a1 = -2 * cos;
+  const a2 = 1 - alpha;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  return (x) => {
+    const y = (b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    return y;
+  };
+}
+
+// Sine oscillator with a time-varying frequency.
+function osc(sr) {
+  let phase = 0;
+  return (f) => {
+    phase += (2 * Math.PI * f) / sr;
+    return Math.sin(phase);
+  };
+}
+
+const env = (t, tau) => Math.exp(-t / tau);
+
 function synth(name, variant, sr) {
   const p = VARIANT_PITCH[variant] || 1;
   const TWO_PI = Math.PI * 2;
   const noise = noiseGen(12345);
   let len = 0.08;
   let fn;
+  let normalize = false;
   switch (name) {
     case 'click': {
       const f = 1500 * p;
       len = 0.04;
-      fn = (t) => Math.sin(TWO_PI * f * t) * Math.exp(-t / 0.008);
+      fn = (t) => Math.sin(TWO_PI * f * t) * env(t, 0.008);
       break;
     }
     case 'beep': {
       const f = 880 * p;
       len = 0.09;
-      fn = (t) => Math.sin(TWO_PI * f * t) * Math.min(1, t / 0.002) * Math.exp(-t / 0.03) * 0.8;
+      fn = (t) => Math.sin(TWO_PI * f * t) * Math.min(1, t / 0.002) * env(t, 0.03) * 0.8;
       break;
     }
     case 'woodblock': {
       const f = 820 * p;
       len = 0.07;
-      fn = (t) => (Math.sin(TWO_PI * f * t) + 0.35 * Math.sin(TWO_PI * f * 2.6 * t)) * Math.exp(-t / 0.018) * 0.75;
+      fn = (t) => (Math.sin(TWO_PI * f * t) + 0.35 * Math.sin(TWO_PI * f * 2.6 * t)) * env(t, 0.018) * 0.75;
       break;
     }
     case 'rim': {
       const f = 1750 * p;
       len = 0.05;
-      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.6 + noise() * 0.5 * Math.exp(-t / 0.004)) * Math.exp(-t / 0.012);
+      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.6 + noise() * 0.5 * env(t, 0.004)) * env(t, 0.012);
       break;
     }
     case 'cowbell': {
@@ -60,34 +103,88 @@ function synth(name, variant, sr) {
       len = 0.25;
       fn = (t) => {
         const sq = (f) => Math.sin(TWO_PI * f * t) + Math.sin(TWO_PI * 3 * f * t) / 3;
-        return (sq(f1) + sq(f2)) * 0.3 * Math.exp(-t / 0.06);
+        return (sq(f1) + sq(f2)) * 0.3 * env(t, 0.06);
       };
-      break;
-    }
-    case 'snare': {
-      len = 0.2;
-      fn = (t) => noise() * 0.6 * Math.exp(-t / 0.05) + Math.sin(TWO_PI * 185 * t) * 0.5 * Math.exp(-t / 0.025);
       break;
     }
     case 'hihat': {
-      len = 0.06;
-      let prev = 0;
+      len = 0.07;
+      const hp = biquad('highpass', 7000 * p, 0.7, sr);
+      fn = (t) => hp(noise()) * 0.65 * env(t, 0.018);
+      break;
+    }
+    // ---- sight-reading voices ----
+    case 'snare': {
+      len = 0.32;
+      normalize = true;
+      const body1 = osc(sr);
+      const body2 = osc(sr);
+      const wires = biquad('bandpass', 4200, 0.6, sr);
+      const air = biquad('highpass', 2500, 0.7, sr);
       fn = (t) => {
         const n = noise();
-        const hp = n - prev; // crude high-pass
-        prev = n;
-        return hp * 0.45 * Math.exp(-t / 0.015);
+        const body = (body1(185 + 60 * env(t, 0.012)) * 0.7 + body2(330) * 0.3) * env(t, 0.05);
+        const snares = (wires(n) * 1.6 + air(n) * 0.5) * env(t, 0.11);
+        return body * 0.8 + snares + n * 0.4 * env(t, 0.002);
       };
+      break;
+    }
+    case 'clap': {
+      len = 0.3;
+      normalize = true;
+      const bp = biquad('bandpass', 1150, 1.1, sr);
+      const bursts = [0, 0.011, 0.023];
+      fn = (t) => {
+        let e = 0;
+        for (const b of bursts) if (t >= b) e += env(t - b, 0.0045);
+        if (t >= 0.03) e += 0.7 * env(t - 0.03, 0.08);
+        return bp(noise()) * e;
+      };
+      break;
+    }
+    case 'xstick': {
+      len = 0.12;
+      normalize = true;
+      const bp = biquad('bandpass', 2100, 2.5, sr);
+      fn = (t) => bp(noise()) * 1.5 * env(t, 0.006)
+        + (Math.sin(TWO_PI * 1650 * t) * 0.45 + Math.sin(TWO_PI * 2480 * t) * 0.25) * env(t, 0.018)
+        + Math.sin(TWO_PI * 460 * t) * 0.35 * env(t, 0.03);
+      break;
+    }
+    case 'conga': {
+      len = 0.45;
+      normalize = true;
+      const o1 = osc(sr);
+      const o2 = osc(sr);
+      const slap = biquad('bandpass', 1600, 1.5, sr);
+      fn = (t) => {
+        const f = 215 * (1 + 0.12 * env(t, 0.012));
+        return (o1(f) + 0.25 * o2(f * 2.12)) * env(t, 0.13) * Math.min(1, t / 0.0015) + slap(noise()) * 0.5 * env(t, 0.004);
+      };
+      break;
+    }
+    case 'tom': {
+      len = 0.6;
+      normalize = true;
+      const o1 = osc(sr);
+      const lp = biquad('lowpass', 900, 0.7, sr);
+      fn = (t) => o1(105 * (1 + 0.45 * env(t, 0.04))) * env(t, 0.24) + lp(noise()) * 0.35 * env(t, 0.025);
+      break;
+    }
+    case 'marimba': {
+      len = 0.8;
+      normalize = true;
+      const f = 523.25;
+      fn = (t) => Math.min(1, t / 0.001) * (
+        Math.sin(TWO_PI * f * t) * env(t, 0.32)
+        + 0.28 * Math.sin(TWO_PI * f * 3.93 * t) * env(t, 0.045)
+        + 0.06 * Math.sin(TWO_PI * f * 9.5 * t) * env(t, 0.01));
       break;
     }
     case 'kick': {
       len = 0.3;
-      let phase = 0;
-      fn = (t) => {
-        const f = 50 + 90 * Math.exp(-t / 0.03);
-        phase += (TWO_PI * f) / sr;
-        return Math.sin(phase) * Math.exp(-t / 0.12);
-      };
+      const o = osc(sr);
+      fn = (t) => o(50 + 90 * env(t, 0.03)) * env(t, 0.12);
       break;
     }
     default:
@@ -96,11 +193,19 @@ function synth(name, variant, sr) {
   const n = Math.floor(len * sr);
   const data = new Float32Array(n);
   for (let i = 0; i < n; i++) data[i] = fn(i / sr);
+  if (normalize) {
+    let peak = 0;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i]));
+    if (peak > 0) for (let i = 0; i < n; i++) data[i] *= 0.9 / peak;
+  }
   // Short fade-out to avoid a click at the end of the buffer.
   const fade = Math.min(64, n);
   for (let i = 0; i < fade; i++) data[n - 1 - i] *= i / fade;
   return data;
 }
+
+// For tests: render a sound without an AudioContext.
+export const _synth = synth;
 
 // Worker-based ticker: keeps ticking more reliably than setInterval on the main thread.
 function makeTicker(intervalMs, cb) {

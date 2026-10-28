@@ -44,6 +44,15 @@ async function test(name, fn) {
 }
 
 const tab = (page, name) => page.tap(`.tabbar [data-tab=${name}]`);
+const isPlaying = (page, sel) => page.$eval(sel, (b) => b.dataset.playing === 'true');
+const setGen = (page, g) => page.evaluate(async (g) => {
+  const s = await import('./js/store.js');
+  for (const [k, v] of Object.entries(g)) s.set(`gen.${k}`, v);
+}, g);
+async function startAlong(page) {
+  await setGen(page, { playAlong: true });
+  await page.tap('#r-play');
+}
 const played = (page) => page.evaluate(() => window.__played);
 const intervals = (evs) => evs.slice(1).map((e, i) => +(e.time - evs[i].time).toFixed(4));
 
@@ -99,6 +108,7 @@ async function tagNotes(page, noteSound) {
 
   // ---------------- Metronome ----------------
   await test('metronome: 120 BPM clicks every 0.5 s with beat one accented', async (page) => {
+    await tab(page, 'metronome');
     await page.tap('#m-play');
     await page.waitForTimeout(2300);
     await page.tap('#m-play');
@@ -111,6 +121,7 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: stop really stops (no clicks after stop)', async (page) => {
+    await tab(page, 'metronome');
     await page.tap('#m-play');
     await page.waitForTimeout(1200);
     await page.tap('#m-play');
@@ -120,10 +131,11 @@ async function tagNotes(page, noteSound) {
     const after = (await played(page)).filter((e) => e.time > t + 0.2);
     assert.equal((await played(page)).length, n);
     assert.equal(after.length, 0);
-    assert.equal(await page.textContent('#m-play'), '▶');
+    assert.equal(await isPlaying(page, '#m-play'), false);
   });
 
   await test('metronome: tempo change while playing applies immediately', async (page) => {
+    await tab(page, 'metronome');
     await page.tap('#m-play');
     await page.waitForTimeout(1100);
     const changedAt = await page.evaluate(async () => {
@@ -146,7 +158,8 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: clicks per beat, per-click states and mute', async (page) => {
-    await page.tap('[data-step="metronome.sub"][data-delta="1"]'); // 2 per beat
+    await tab(page, 'metronome');
+    await page.click('#m-dial .hit[data-kind="sub"][data-value="2"]'); // 2 per beat
     const pads = await page.$$('#m-pads .pad');
     assert.equal(pads.length, 8);
     // Cycle pad 2 (off-beat of beat 1): soft -> silent
@@ -164,6 +177,7 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: tap tempo sets 120 BPM from 0.5 s taps', async (page) => {
+    await tab(page, 'metronome');
     for (let i = 0; i < 5; i++) {
       await page.dispatchEvent('#m-tap', 'pointerdown');
       await page.waitForTimeout(500);
@@ -173,6 +187,7 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: gap click alternates sound and silent bars', async (page) => {
+    await tab(page, 'metronome');
     await page.evaluate(async () => {
       const s = await import('./js/store.js');
       s.set('metronome.bpm', 240);
@@ -192,6 +207,7 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: stepwise trainer increases tempo each bar up to the target', async (page) => {
+    await tab(page, 'metronome');
     await page.evaluate(async () => {
       const s = await import('./js/store.js');
       s.set('metronome.bpm', 200);
@@ -224,7 +240,8 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('metronome: countdown stops playback when time is up', async (page) => {
-    await page.selectOption('[data-bind="metronome.countdown"]', '1');
+    await tab(page, 'metronome');
+    await page.evaluate(async () => (await import('./js/store.js')).set('metronome.countdown', 1));
     await page.tap('#m-play');
     await page.waitForTimeout(300);
     // Jump the clock forward 61 s.
@@ -233,25 +250,70 @@ async function tagNotes(page, noteSound) {
       performance.now = () => orig() + 61000;
     });
     await page.waitForTimeout(600);
-    assert.equal(await page.textContent('#m-play'), '▶');
-    assert.equal(await page.textContent('#m-countdown'), '0:00');
+    assert.equal(await isPlaying(page, '#m-play'), false);
+    assert.equal(await page.textContent('#m-countdown'), 'Stops in 0:00');
     assert.ok(await page.isVisible('#toast'));
   });
 
   await test('metronome: setlist save, load and delete (persists after reload)', async (page) => {
+    await tab(page, 'metronome');
     await page.evaluate(async () => (await import('./js/store.js')).set('metronome.bpm', 133));
-    await page.click('details:has(#m-setlist) summary');
+    await page.tap('#m-setlist-btn');
     await page.fill('#m-set-name', 'Verse');
     await page.tap('#m-set-save');
     await page.evaluate(async () => (await import('./js/store.js')).set('metronome.bpm', 90));
     await page.reload();
     await page.waitForFunction(() => document.querySelector('#r-timesig option'));
-    await page.click('details:has(#m-setlist) summary');
+    await tab(page, 'metronome');
+    await page.tap('#m-setlist-btn');
     assert.match(await page.textContent('#m-setlist'), /Verse/);
     await page.tap('#m-setlist [data-load="0"]');
     assert.equal(await page.textContent('#m-bpm-out'), '133');
     await page.tap('#m-setlist [data-del="0"]');
     assert.match(await page.textContent('#m-setlist'), /Nothing saved/);
+  });
+
+  await test('metronome: dial picks beats, Mark One toggles the accent, hold resets the timer', async (page) => {
+    await tab(page, 'metronome');
+    await page.click('#m-dial .hit[data-kind="num"][data-value="7"]');
+    assert.equal(await page.$$eval('#m-pads .pad', (p) => p.length), 7);
+    assert.equal(await page.$eval('#m-pads .pad', (p) => p.dataset.s), '3');
+    await page.tap('#m-markone');
+    assert.equal(await page.$eval('#m-pads .pad', (p) => p.dataset.s), '2');
+    assert.equal(await page.$eval('#m-markone', (b) => b.classList.contains('on')), false);
+    await page.tap('#m-play');
+    await page.waitForTimeout(2200);
+    await page.tap('#m-play');
+    assert.equal(await page.textContent('#m-elapsed'), '00:02');
+    // Hold the timer for a second to reset it.
+    const box = await page.$eval('#m-timer', (e) => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    await page.waitForTimeout(900);
+    await page.mouse.up();
+    assert.equal(await page.textContent('#m-elapsed'), '00:00');
+    assert.ok(await page.$eval('#m-sheet', (e) => e.hidden), 'holding should not open the timer sheet');
+    // Dragging the disk like a knob changes the tempo.
+    const d = await page.$eval('#m-dial', (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
+    const at = (deg) => ({ x: d.x + d.w / 2 + Math.sin(deg * Math.PI / 180) * d.w * 0.3, y: d.y + d.w / 2 - Math.cos(deg * Math.PI / 180) * d.w * 0.3 });
+    const p0 = at(110); // lower right, clear of the arrow buttons
+    await page.mouse.move(p0.x, p0.y);
+    await page.mouse.down();
+    for (let a = 112; a <= 160; a += 2) { const p = at(a); await page.mouse.move(p.x, p.y); }
+    await page.mouse.up();
+    assert.equal(await page.textContent('#m-bpm-out'), '130');
+  });
+
+  await test('reading: a 1-minute play-along session ends by itself', async (page) => {
+    await tab(page, 'rhythm');
+    await setGen(page, { readingMode: true, readingMinutes: 1, bpm: 200 });
+    await startAlong(page);
+    await page.waitForTimeout(3000);
+    assert.match(await page.textContent('#r-along-time'), /^00:5\d$/);
+    // Fast-forward the clock by a minute.
+    await page.evaluate(() => { const o = performance.now.bind(performance); performance.now = () => o() + 60000; });
+    await page.waitForFunction(() => document.getElementById('modal').open, null, { timeout: 5000 });
+    assert.equal(await isPlaying(page, '#r-play'), false);
   });
 
   // ---------------- Rhythm ----------------
@@ -263,7 +325,7 @@ async function tagNotes(page, noteSound) {
     });
     await page.tap('#r-new');
     await page.tap('#r-play');
-    await page.waitForFunction(() => document.querySelector('#r-play').textContent === '▶', null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#r-play').dataset.playing === 'false', null, { timeout: 15000 });
     const { evs, expected } = await page.evaluate(async () => {
       const ui = await import('./js/rhythm-ui.js');
       const { barEvents } = await import('./js/rhythm.js');
@@ -281,6 +343,20 @@ async function tagNotes(page, noteSound) {
     notes.forEach((n, i) => assert.ok(Math.abs(n.time - (start + expected[i] * 0.25)) < 0.002, `note ${i}`));
   });
 
+  await test('rhythm: sight-reading has its own sound list and uses the chosen sound', async (page) => {
+    await tab(page, 'rhythm');
+    const rhythmOpts = await page.$$eval('[data-bind="gen.sound"] option', (o) => o.map((x) => x.value));
+    const metroOpts = await page.$$eval('[data-bind="metronome.sound"] option', (o) => o.map((x) => x.value));
+    assert.deepEqual(rhythmOpts, ['snare', 'clap', 'xstick', 'conga', 'tom', 'marimba']);
+    assert.ok(rhythmOpts.every((o) => !metroOpts.includes(o)));
+    await setGen(page, { sound: 'conga', bpm: 240, bars: 1, loop: false, countIn: false, click: true });
+    await page.tap('#r-new');
+    await page.tap('#r-play');
+    await page.waitForFunction(() => document.querySelector('#r-play').dataset.playing === 'false', null, { timeout: 10000 });
+    const names = new Set((await played(page)).map((e) => e.name));
+    assert.deepEqual([...names].sort(), ['click', 'conga']);
+  });
+
   await test('rhythm: swing delays off-beat 8ths', async (page) => {
     await tab(page, 'rhythm');
     const bar = { num: 4, den: 4, beats: 4, groups: [0, 1, 2, 3].map((b) => ({ kind: 'straight', res: 8, startBeat: b, lengthBeats: 1, slotBeats: 0.5, slots: [1, 1], ghost: [false, false], accent: [false, false], key: 'x' })) };
@@ -290,7 +366,7 @@ async function tagNotes(page, noteSound) {
       (await import('./js/rhythm-ui.js')).setRhythm([bar]);
     }, bar);
     await page.tap('#r-play');
-    await page.waitForFunction(() => document.querySelector('#r-play').textContent === '▶', null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelector('#r-play').dataset.playing === 'false', null, { timeout: 10000 });
     const iv = intervals(await played(page));
     // 120 BPM: beat 0.5 s, long-short = 0.33 / 0.17
     iv.forEach((d, i) => assert.ok(Math.abs(d - (i % 2 === 0 ? 0.33 : 0.17)) < 0.002, `interval ${i} = ${d}`));
@@ -327,9 +403,9 @@ async function tagNotes(page, noteSound) {
     await page.waitForTimeout(600);
     const lit = await page.$$eval('#r-notation .vf-stavenote.playing', (e) => e.length);
     // The highlight must actually change the notehead colour, not just the class.
-    const colours = await page.$eval('#r-notation .vf-stavenote.playing path', (e) => [
+    const colours = await page.$eval('#r-notation .vf-stavenote.playing .vf-notehead path', (e) => [
       getComputedStyle(e).fill,
-      getComputedStyle(document.querySelector('#r-notation .vf-stavenote:not(.playing) path')).fill,
+      getComputedStyle(document.querySelector('#r-notation .vf-stavenote:not(.playing) .vf-notehead path')).fill,
     ]);
     await page.tap('#r-play');
     assert.equal(lit, 1);
@@ -342,21 +418,27 @@ async function tagNotes(page, noteSound) {
   await test('rhythm: every setting regenerates a valid rhythm without errors', async (page) => {
     await tab(page, 'rhythm');
     const sigs = await page.$$eval('#r-timesig option', (o) => o.map((x) => x.value));
-    for (const sig of sigs) {
-      await page.selectOption('#r-timesig', sig);
-      for (const sub of ['8th', '16th']) {
-        await page.tap(`[data-bind="gen.subdivision"] [data-value="${sub}"]`);
-        for (const bars of ['1', '8']) await page.tap(`[data-bind="gen.bars"] [data-value="${bars}"]`);
+    for (const timeSig of sigs) {
+      for (const subdivision of ['8th', '16th']) {
+        for (const bars of [1, 8]) {
+          await setGen(page, { timeSig, subdivision, bars, triplets: true, ghostNotes: true, accents: true, complexity: 10 });
+          assert.equal(await page.$$eval('#r-notation .error', (e) => e.length), 0, `${timeSig} ${subdivision}`);
+          assert.equal(await page.$$eval('#r-notation .nrow', (e) => e.length), bars);
+        }
       }
     }
-    for (const t of ['triplets', 'ghostNotes', 'accents']) await page.check(`[data-bind="gen.${t}"]`);
-    await page.$eval('#tab-rhythm [data-bind="gen.complexity"]', (el) => { el.value = 10; el.dispatchEvent(new Event('input')); });
-    assert.equal(await page.$$eval('#r-notation .error', (e) => e.length), 0);
-    assert.ok(await page.$$eval('#r-notation svg', (e) => e.length) >= 1);
+    // The pickers in the summary bar change the same settings.
+    await page.tap('[data-pick="bars"]');
+    await page.tap('#r-pick [data-bind="gen.bars"] [data-value="4"]');
+    assert.equal(await page.textContent('[data-pick="bars"] b'), '4');
+    await page.tap('#r-pick [data-sheet-close]');
+    assert.ok(await page.$eval('#r-pick', (e) => e.hidden));
+    assert.equal(await page.$$eval('#r-notation .nrow', (e) => e.length), 4);
   });
 
   await test('rhythm: presets apply and user presets save/delete', async (page) => {
     await tab(page, 'rhythm');
+    await page.tap('#r-all');
     await page.selectOption('#r-presets', 'b4'); // 6/8 groove
     assert.equal(await page.inputValue('#r-timesig'), '6/8');
     await page.tap('#r-preset-save');
@@ -380,14 +462,13 @@ async function tagNotes(page, noteSound) {
     });
     await page.tap('#r-new');
     await tagNotes(page, 'snare');
-    await page.tap('#r-along');
+    await startAlong(page);
     assert.ok(await page.isVisible('#tap-pad'));
     await autoTap(page, { offsetMs: 0, until: () => document.getElementById('modal').open });
-    const acc = await page.textContent('.summary-acc');
-    const grid = await page.textContent('.summary-grid');
+    const [acc, streak] = await page.$$eval('.stat3 b', (b) => b.map((x) => x.textContent));
     const nNotes = await page.evaluate(() => window.__played.filter((p) => p.note).length);
-    assert.equal(acc, '100%', `accuracy ${acc} / ${grid}`);
-    assert.match(grid, new RegExp(`${nNotes}\\s*longest streak`));
+    assert.equal(acc, '100%', `accuracy ${acc}`);
+    assert.equal(Number(streak), nNotes);
     assert.ok(!(await page.isVisible('#tap-pad')));
     const hist = await page.evaluate(async () => (await import('./js/store.js')).state.history);
     assert.equal(hist.length, 1);
@@ -403,16 +484,16 @@ async function tagNotes(page, noteSound) {
     });
     await page.tap('#r-new');
     await tagNotes(page, 'snare');
-    await page.tap('#r-along');
+    await startAlong(page);
     await autoTap(page, { skip: 'return i % 3 === 1', until: () => document.getElementById('modal').open });
     const total = await page.evaluate(() => window.__played.filter((p) => p.note).length);
     const missed = Math.floor((total + 1) / 3);
-    const acc = Number((await page.textContent('.summary-acc')).replace('%', ''));
+    const acc = Number((await page.textContent('.stat3 b')).replace('%', ''));
     assert.equal(acc, Math.round(((total - missed) / total) * 100), `acc ${acc}, total ${total}`);
     assert.ok(await page.$$eval('[data-missed] svg', (s) => s.length) >= 1, 'most missed not rendered');
     assert.ok(await page.$$eval('#r-notation .vf-stavenote.miss', (s) => s.length) >= 1, 'misses not marked');
-    assert.equal(await page.$eval('#r-notation .vf-stavenote.miss path', (e) => getComputedStyle(e).fill), 'rgb(214, 69, 69)', 'misses not red');
-    assert.equal(await page.$eval('#r-notation .vf-stavenote.hit path', (e) => getComputedStyle(e).fill), 'rgb(31, 157, 85)', 'hits not green');
+    assert.equal(await page.$eval('#r-notation .vf-stavenote.miss .vf-notehead path', (e) => getComputedStyle(e).fill), 'rgb(214, 69, 69)', 'misses not red');
+    assert.equal(await page.$eval('#r-notation .vf-stavenote.hit .vf-notehead path', (e) => getComputedStyle(e).fill), 'rgb(31, 157, 85)', 'hits not green');
     await page.tap('#drill-btn');
     assert.ok(!(await page.evaluate(() => document.getElementById('modal').open)));
   });
@@ -426,9 +507,9 @@ async function tagNotes(page, noteSound) {
     });
     await page.tap('#r-new');
     await tagNotes(page, 'snare');
-    await page.tap('#r-along');
+    await startAlong(page);
     await autoTap(page, { offsetMs: 70, until: () => document.getElementById('modal').open });
-    assert.equal(await page.textContent('.summary-acc'), '100%');
+    assert.equal(await page.textContent('.stat3 b'), '100%');
     assert.match(await page.textContent('#modal-body'), /ms late/);
   });
 
@@ -438,59 +519,54 @@ async function tagNotes(page, noteSound) {
       const s = await import('./js/store.js');
       Object.assign(s.state.gen, { bpm: 60, bars: 1, passes: 0 });
     });
-    await page.tap('#r-along');
+    await startAlong(page);
     await page.waitForTimeout(300);
     await page.dispatchEvent('#tap-pad', 'pointerdown');
     await page.waitForTimeout(8000); // count-in (4 s) plus the whole first bar
-    await page.dispatchEvent('#tap-stop', 'pointerdown');
+    await page.tap('#r-play');
     await page.waitForFunction(() => document.getElementById('modal').open);
     assert.ok(!(await page.isVisible('#tap-pad')));
     // The count-in tap was ignored (0 extra taps); the untapped notes count as misses.
-    const grid = await page.textContent('.summary-grid');
-    assert.match(grid, /0\s*extra taps/);
-    assert.equal(await page.textContent('.summary-acc'), '0%');
+    assert.match(await page.textContent('.stat-line'), /0 extra taps/);
+    assert.equal(await page.textContent('.stat3 b'), '0%');
   });
 
   // ---------------- Reading ----------------
   await test('reading: rows scroll in endlessly and notes highlight', async (page) => {
-    await tab(page, 'reading');
-    await page.evaluate(async () => {
-      const s = await import('./js/store.js');
-      Object.assign(s.state.gen, { bpm: 260, timeSig: '4/4', subdivision: '8th', complexity: 3 });
-    });
-    await page.tap('#rd-new');
+    await tab(page, 'rhythm');
+    await setGen(page, { readingMode: true, bpm: 260, timeSig: '4/4', subdivision: '8th', complexity: 3 });
+    assert.ok(await page.isVisible('#rd-notation'));
+    assert.ok(!(await page.isVisible('#r-notation')));
+    await page.tap('#r-new');
     const firstRowHtml = await page.$eval('#rd-notation .nrow', (e) => e.innerHTML);
-    await page.tap('#rd-play');
+    await page.tap('#r-play');
     await page.waitForTimeout(9000);
     const rows = await page.$$eval('#rd-notation .nrow', (e) => e.length);
     const nowFirst = await page.$eval('#rd-notation .nrow', (e) => e.innerHTML);
     const current = await page.$$eval('#rd-notation .nrow.current', (e) => e.length);
-    await page.tap('#rd-play');
-    assert.equal(rows, 3);
+    await page.tap('#r-play');
+    assert.equal(rows, 4);
     assert.equal(current, 1);
     assert.notEqual(nowFirst, firstRowHtml, 'rows did not advance');
   });
 
   await test('reading: play-along scores across many bars', async (page) => {
-    await tab(page, 'reading');
-    await page.evaluate(async () => {
-      const s = await import('./js/store.js');
-      Object.assign(s.state.gen, { bpm: 200, timeSig: '6/8', subdivision: '8th', complexity: 4, space: 10 });
-      s.state.prefs.hearRhythm = true;
-    });
-    await page.tap('#rd-new');
+    await tab(page, 'rhythm');
+    await setGen(page, { readingMode: true, readingMinutes: 0, bpm: 200, timeSig: '6/8', subdivision: '8th', complexity: 4, space: 10 });
+    await page.evaluate(async () => { (await import('./js/store.js')).state.prefs.hearRhythm = true; });
+    await page.tap('#r-new');
     await tagNotes(page, 'snare');
-    await page.tap('#rd-along');
+    await startAlong(page);
     await autoTap(page, { until: () => window.__taps >= 30 });
-    await page.dispatchEvent('#tap-stop', 'pointerdown');
+    await page.tap('#r-play');
     await page.waitForFunction(() => document.getElementById('modal').open);
-    const acc = Number((await page.textContent('.summary-acc')).replace('%', ''));
+    const acc = Number((await page.textContent('.stat3 b')).replace('%', ''));
     assert.ok(acc >= 95, `accuracy ${acc}`);
   });
 
   // ---------------- Settings ----------------
   await test('calibration: measures a consistent 60 ms tap delay', async (page) => {
-    await tab(page, 'settings');
+    await tab(page, 'menu');
     await page.tap('#s-calibrate');
     await page.evaluate(() => {
       window.__tapStop = false;
@@ -520,7 +596,7 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('settings: theme, export and import round-trip', async (page) => {
-    await tab(page, 'settings');
+    await tab(page, 'menu');
     await page.tap('[data-bind="prefs.theme"] [data-value="dark"]');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
     await page.evaluate(async () => (await import('./js/store.js')).set('metronome.bpm', 77));
@@ -534,14 +610,15 @@ async function tagNotes(page, noteSound) {
   });
 
   await test('switching tabs stops the other player', async (page) => {
+    await tab(page, 'metronome');
     await page.tap('#m-play');
     await tab(page, 'rhythm');
     await page.tap('#r-play');
     await page.waitForTimeout(200);
     await tab(page, 'metronome');
-    assert.equal(await page.textContent('#m-play'), '▶');
+    assert.equal(await isPlaying(page, '#m-play'), false);
     await tab(page, 'rhythm');
-    assert.equal(await page.textContent('#r-play'), '■');
+    assert.equal(await isPlaying(page, '#r-play'), true);
     await page.tap('#r-play');
   });
 

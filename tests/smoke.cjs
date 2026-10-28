@@ -10,7 +10,7 @@ const serve = require('./server.cjs');
   p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errs.push('CONSOLE ' + m.text()); });
   await p.goto(url);
   await p.waitForTimeout(800);
-  for (const tab of ['metronome', 'rhythm', 'reading', 'settings']) {
+  for (const tab of ['rhythm', 'metronome', 'menu']) {
     await p.tap(`.tabbar [data-tab=${tab}]`);
     await p.waitForTimeout(400);
     await p.screenshot({ path: `/tmp/claude-0/tab-${tab}.png`, fullPage: true });

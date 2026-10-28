@@ -4,7 +4,8 @@ import { state, set, on, save, refresh } from './store.js';
 import { scheduler, claim, release, isOwner } from './transport.js';
 import { PlayAlong } from './playalong.js';
 import { rhythmBarEvents, countInBar, sessionMeta } from './playback.js';
-import { openModal, toast, escapeHtml } from './ui.js';
+import { openModal, toast, escapeHtml, openSheet } from './ui.js';
+import * as reading from './reading.js';
 
 const $ = (id) => document.getElementById(id);
 const gen = () => state.gen;
@@ -39,13 +40,10 @@ export function current() {
 
 function render() {
   const el = $('r-notation');
-  const width = Math.floor(el.clientWidth || 360);
+  const width = Math.floor(el.clientWidth || 360) - 18; // minus the row's thick edges
+  // One bar per row on phones, like a printed exercise; two on wide screens if they fit.
   const need = Math.max(...rhythm.map(barMinWidth));
-  barsPerRow = Math.max(1, Math.min(4, rhythm.length, Math.floor((width - 30) / need)));
-  // Avoid a lonely last bar: 3 bars per row with 4 bars -> use 2.
-  if (rhythm.length % barsPerRow !== 0 && barsPerRow > 1) {
-    while (barsPerRow > 1 && rhythm.length % barsPerRow !== 0) barsPerRow--;
-  }
+  barsPerRow = width >= 600 && rhythm.length > 1 && need * 2 + 30 <= width ? 2 : 1;
   el.innerHTML = '';
   noteMap = new Map();
   rowEls = [];
@@ -59,7 +57,7 @@ function render() {
       map.forEach((v, k) => noteMap.set(k, v));
     }
   } catch (err) {
-    el.innerHTML = `<div class="error">Could not draw this rhythm (${escapeHtml(err.message)}). Tap “New rhythm”.</div>`;
+    el.innerHTML = `<div class="error">Could not draw this rhythm (${escapeHtml(err.message)}). Tap the new-rhythm button.</div>`;
     console.error(err);
   }
   renderedVersion = version;
@@ -67,6 +65,11 @@ function render() {
 }
 
 function newRhythm() {
+  if (gen().readingMode) {
+    if (session) stop();
+    reading.reset();
+    return;
+  }
   const r = generateRhythm(gen());
   if (playing) {
     pending = r;
@@ -79,7 +82,8 @@ function newRhythm() {
 }
 
 export function setRhythm(bars) {
-  if (playing) stop();
+  if (session) stop();
+  if (gen().readingMode) set('gen.readingMode', false);
   rhythm = bars;
   version++;
   render();
@@ -153,23 +157,13 @@ function onResult(type, e) {
   else setNoteClass(n, e.grade === 'perfect' || e.grade === 'good' ? 'hit' : 'off');
 }
 
-function start(alongMode = false) {
+function startRhythm(alongSession) {
   if (!rhythm) newRhythm();
   claim('rhythm', () => stopUi());
   playing = true;
+  along = alongSession;
   clearMarks();
-  if (alongMode) {
-    along = new PlayAlong({
-      mode: 'rhythm',
-      liveEl: $('r-live'),
-      onResult,
-      onStopRequest: () => stop(),
-      onDrill: drill,
-    });
-    along.start(sessionMeta(gen()));
-    window.scrollTo({ top: 0 });
-  }
-  scheduler.start(makeSource(alongMode), {
+  scheduler.start(makeSource(!!alongSession), {
     onEvent: (ev, info) => {
       if (ev.countIn != null) {
         showCountIn(ev.countIn);
@@ -187,39 +181,139 @@ function start(alongMode = false) {
       if (info.swapped || info.version !== renderedVersion) render();
       else if (info.patternBar === 0 && info.pass > 0) clearMarks();
       const row = rowEls[Math.floor(info.patternBar / barsPerRow)];
-      if (row && rhythm.length > barsPerRow) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (row && rhythm.length > 2) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      onSessionBar(info);
     },
     // Give the last note's timing window a moment before scoring ends.
     onEnd: () => setTimeout(() => isOwner('rhythm') && stop(), 300),
   });
-  $('r-play').textContent = '■';
-  $('r-play').classList.add('playing');
-  $('r-along').textContent = alongMode ? 'Stop' : 'Play along';
 }
 
 function stopUi() {
+  if (!playing) return;
   playing = false;
+  along = null;
   showCountIn(null);
   if (lastPlaying) setNoteClass(lastPlaying, 'playing', false);
   lastPlaying = null;
-  $('r-play').textContent = '▶';
-  $('r-play').classList.remove('playing');
-  $('r-along').textContent = 'Play along';
-  const a = along;
-  along = null;
-  a?.end(true);
   if (pending) {
     rhythm = pending;
     pending = null;
     version++;
     render();
   }
+  sessionEnded();
+}
+
+function stopRhythm() {
+  if (isOwner('rhythm')) scheduler.stop();
+  release('rhythm');
+  stopUi();
+}
+
+// ---- Session controller: one play button for normal playback, Reading Mode and Play Along ----
+let session = null;
+let sessionTimer = null;
+
+const fmtClock = (sec) => {
+  const s = Math.max(0, Math.round(sec));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function setPlayingUi(on, withAlong) {
+  $('r-play').dataset.playing = on;
+  $('r-play').setAttribute('aria-label', on ? 'Stop' : 'Play');
+  $('r-along-top').hidden = !withAlong;
+  $('r-progress').hidden = !withAlong;
+  $('tap-pad').hidden = !withAlong;
+  $('r-modes').hidden = withAlong;
+  $('r-along-time').textContent = '00:00';
+  $('r-progress-bar').style.width = '0%';
+}
+
+function updateSessionClock() {
+  if (!session?.along) return;
+  const elapsed = session.t0 ? (performance.now() - session.t0) / 1000 : 0;
+  const limit = session.mode === 'reading' ? gen().readingMinutes * 60 : 0;
+  if (limit) {
+    $('r-along-time').textContent = fmtClock(limit - elapsed);
+    $('r-progress-bar').style.width = `${Math.min(100, (elapsed / limit) * 100)}%`;
+    if (elapsed >= limit) stop();
+  } else {
+    $('r-along-time').textContent = fmtClock(elapsed);
+  }
+}
+
+function onSessionBar(info) {
+  if (!session) return;
+  if (!session.t0) session.t0 = performance.now();
+  session.bars++;
+  if (session.mode === 'rhythm' && session.along) {
+    const passes = gen().passes;
+    const total = rhythm.length * (passes || 1);
+    const done = passes ? session.bars : ((session.bars - 1) % rhythm.length) + 1;
+    $('r-progress-bar').style.width = `${Math.min(100, (done / total) * 100)}%`;
+  }
+}
+
+function sessionEnded() {
+  const s = session;
+  if (!s) return;
+  session = null;
+  clearInterval(sessionTimer);
+  setPlayingUi(false, false);
+  s.along?.end(true);
+}
+
+export function play() {
+  if (session) {
+    stop();
+    return;
+  }
+  const mode = gen().readingMode ? 'reading' : 'rhythm';
+  let alongSession = null;
+  if (gen().playAlong) {
+    alongSession = new PlayAlong({
+      mode: mode === 'reading' ? 'reading' : 'rhythm',
+      liveEl: $('tab-rhythm'),
+      onResult: (type, e) => (mode === 'reading' ? reading.onResult(type, e) : onResult(type, e)),
+      onStopRequest: () => stop(),
+      onDrill: mode === 'rhythm' ? drill : null,
+    });
+  }
+  session = { mode, along: alongSession, t0: 0, bars: 0 };
+  setPlayingUi(true, !!alongSession);
+  if (alongSession) {
+    alongSession.start(sessionMeta(gen()));
+    window.scrollTo({ top: 0 });
+  }
+  if (mode === 'reading') reading.start(alongSession, { onStopped: sessionEnded, onBar: onSessionBar });
+  else startRhythm(alongSession);
+  clearInterval(sessionTimer);
+  sessionTimer = setInterval(updateSessionClock, 200);
 }
 
 export function stop() {
-  if (isOwner('rhythm')) scheduler.stop();
-  release('rhythm');
-  if (playing) stopUi();
+  if (!session) return;
+  if (session.mode === 'reading') reading.stop();
+  else stopRhythm();
+}
+
+export function isPlaying() {
+  return !!session;
+}
+
+function showMode() {
+  const readingOn = gen().readingMode;
+  $('r-notation').hidden = readingOn;
+  $('rd-notation').hidden = !readingOn;
+  if (readingOn) reading.reset();
+  else if (rhythm) render();
+  const hints = [];
+  if (readingOn) hints.push('Reading Mode: new bars keep coming until you stop.');
+  if (gen().playAlong) hints.push('Play Along: after the count-in, tap the big pad in time with the notes.');
+  if (!hints.length) hints.push('Tap play to hear the rhythm, or the arrow button for a new one.');
+  $('r-hint').textContent = hints.join(' ');
 }
 
 // Build a rhythm that repeats the groupings missed most often.
@@ -263,10 +357,11 @@ function applyPreset(value) {
 
 function savePreset() {
   const { body, close } = openModal(`
-    <h2>Save preset</h2>
-    <input type="text" id="preset-name" maxlength="40" placeholder="Preset name">
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button class="btn ghost" data-close>Cancel</button><button class="btn accent" id="preset-ok">Save</button>
+    <div class="sheet-head"><button class="sheet-close" data-close>CLOSE</button></div>
+    <div class="modal-pad">
+      <h3>Save preset</h3>
+      <input type="text" id="preset-name" maxlength="40" placeholder="Preset name">
+      <div class="modal-actions"><button class="pill" id="preset-ok">Save</button></div>
     </div>`);
   const input = body.querySelector('#preset-name');
   input.focus();
@@ -297,42 +392,56 @@ function deletePreset() {
 }
 
 export function onShow() {
-  if (!rhythm) newRhythm();
-  else if (!playing) render(); // width may have changed while the tab was hidden
+  if (gen().readingMode) {
+    if (!session && reading.needsRedraw()) reading.reset();
+  } else if (!rhythm) newRhythm();
+  else if (!session) render(); // width may have changed while the tab was hidden
 }
 
 export function init() {
   $('r-timesig').innerHTML = TIME_SIGNATURES.map((t) => `<option value="${t}">${t}</option>`).join('');
+  $('r-complexity-select').innerHTML = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">Level ${i + 1}</option>`).join('');
   refresh('gen.timeSig');
+  refresh('gen.complexity');
   renderPresets();
   $('r-new').addEventListener('click', newRhythm);
-  $('r-play').addEventListener('click', () => (playing ? stop() : start(false)));
-  $('r-along').addEventListener('click', () => {
-    if (playing) stop();
-    else start(true);
-  });
+  $('r-play').addEventListener('click', play);
+  $('r-all').addEventListener('click', () => openSheet('r-sheet'));
+  document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => openSheet('r-pick', 'data-pick-pane', b.dataset.pick)));
   $('r-presets').addEventListener('change', (e) => e.target.value && applyPreset(e.target.value));
   $('r-preset-save').addEventListener('click', savePreset);
   $('r-preset-del').addEventListener('click', deletePreset);
   on('gen', (path) => {
     const key = path.split('.')[1];
-    if (REGEN_KEYS.includes(key)) {
-      if (rhythm) newRhythm();
+    if (key === 'readingMode' || key === 'playAlong') {
+      if (session) stop();
+      showMode();
+      return;
     }
-    if (key === 'bpm' && playing) scheduler.setBpm(gen().bpm);
+    if (REGEN_KEYS.includes(key)) {
+      if (gen().readingMode) {
+        if (!session && !$('tab-rhythm').hidden) reading.reset();
+        else reading.invalidate();
+      } else if (rhythm) newRhythm();
+    }
+    if (key === 'bpm' && session) scheduler.setBpm(gen().bpm);
   });
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (rhythm && !$('tab-rhythm').hidden) render();
+      if (!$('tab-rhythm').hidden && !session) onShow();
     }, 200);
   });
+  showMode();
 }
 
 export function onDataReplaced() {
   renderPresets();
-  if (!playing) newRhythm();
+  if (session) stop();
+  rhythm = null;
+  newRhythm();
+  showMode();
 }
 
 export { generateBar };

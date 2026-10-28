@@ -153,3 +153,22 @@ test('stopping early does not count future notes as misses', () => {
   assert.equal(s.summary().misses, 0);
   assert.equal(s.summary().accuracy, 100);
 });
+
+test('sight-reading sounds are separate from metronome sounds and render cleanly', async () => {
+  const { _synth, RHYTHM_SOUNDS, METRO_SOUNDS } = await import('../js/audio.js');
+  const rhythmKeys = Object.keys(RHYTHM_SOUNDS);
+  assert.ok(rhythmKeys.length >= 5);
+  assert.ok(rhythmKeys.every((k) => !(k in METRO_SOUNDS)), 'lists overlap');
+  for (const k of [...rhythmKeys, ...Object.keys(METRO_SOUNDS)]) {
+    const d = _synth(k, 'normal', 44100);
+    let peak = 0;
+    for (const x of d) {
+      assert.ok(Number.isFinite(x), `${k} has NaN`);
+      peak = Math.max(peak, Math.abs(x));
+    }
+    assert.ok(peak <= 1, `${k} clips (${peak})`);
+    // Sounds must start right away, or play-along timing would feel late.
+    let onset = d.findIndex((x) => Math.abs(x) > peak * 0.3);
+    assert.ok(onset / 44100 < 0.006, `${k} onset ${(onset / 44.1).toFixed(1)} ms`);
+  }
+});

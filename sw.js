@@ -1,5 +1,5 @@
 // Offline support: cache the app shell, serve it cache-first, refresh in the background.
-const CACHE = 'rhythm-trainer-v1.0.0';
+const CACHE = 'rhythm-trainer-v1.1.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/audio.js', 'js/metronome.js', 'js/notation.js', 'js/playalong.js', 'js/playback.js',

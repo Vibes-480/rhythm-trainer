@@ -347,7 +347,9 @@ async function tagNotes(page, noteSound) {
     await tab(page, 'rhythm');
     const rhythmOpts = await page.$$eval('[data-bind="gen.sound"] option', (o) => o.map((x) => x.value));
     const metroOpts = await page.$$eval('[data-bind="metronome.sound"] option', (o) => o.map((x) => x.value));
-    assert.deepEqual(rhythmOpts, ['snare', 'clap', 'xstick', 'conga', 'tom', 'marimba']);
+    assert.deepEqual(rhythmOpts, ['snare', 'snare-m1', 'snare-m2', 'snare-m3', 'snare-m4', 'snare-m5', 'rimshot', 'brush',
+      'clap', 'xstick', 'conga', 'tom', 'marimba', 'bongo', 'cajon', 'kick']);
+    assert.equal(metroOpts.length, 13);
     assert.ok(rhythmOpts.every((o) => !metroOpts.includes(o)));
     await setGen(page, { sound: 'conga', bpm: 240, bars: 1, loop: false, countIn: false, click: true });
     await page.tap('#r-new');

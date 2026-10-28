@@ -6,7 +6,7 @@ It's modelled on the features and layout of RhythmBot (including the Pro ones), 
 ## Features
 
 **Metronome**: dial with number of beats and clicks per beat (turn the white disk to change tempo), tempo 20–300 BPM, tap tempo, 1–12 beats per bar with a quarter or eighth beat unit, 1–6 clicks per beat,
-per-click accent / normal / soft / silent, mark beat one, 6 click sounds, practice timer, countdown timer,
+per-click accent / normal / soft / silent, mark beat one, 13 click sounds (click, woodblock, beep, rim click, cowbell, hi-hat, clave, sticks, mechanical tick, triangle, bell, shaker, electronic blip), practice timer, countdown timer,
 gap click (play X bars, silent Y bars), stepwise trainer (increase, decrease or alternate every N bars or seconds),
 and a setlist of saved setups.
 
@@ -15,7 +15,7 @@ new-rhythm and play buttons, and a full settings list behind "All".
 
 **Rhythm generator**: 1/2/4/8 bars, complexity 1–10, BPM, 11 time signatures (2/4 to 7/4, 5/8, 6/8, 7/8, 9/8, 12/8),
 8th or 16th subdivision, triplets, ghost notes, accents, swing, space (rests), count-in, loop or once,
-its own sight-reading sounds (snare, clap, cross-stick, conga, tom, marimba), metronome click and click sound, built-in and saved presets. Tapping "New rhythm" while it plays swaps in the new rhythm at the next loop.
+its own 16 sight-reading sounds (snare, five muffled snares tuned from piccolo down to deep, rimshot, brush snare, clap, cross-stick, conga, tom, marimba, bongo, cajon, bass drum; each plays once when you pick it), metronome click and click sound, built-in and saved presets. Tapping "New rhythm" while it plays swaps in the new rhythm at the next loop.
 
 **Reading Mode**: endless sight-reading. Rows of new bars scroll in until you stop, or for a 1, 2 or 5 minute session.
 

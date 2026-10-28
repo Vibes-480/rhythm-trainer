@@ -5,7 +5,7 @@ import * as rhythmUi from './rhythm-ui.js';
 import * as settings from './settings.js';
 import { initSheets } from './ui.js';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 const tabs = { rhythm: rhythmUi, metronome, menu: settings };
 
@@ -13,6 +13,10 @@ function fillSoundSelects() {
   const opts = (list) => Object.entries(list).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   document.querySelectorAll('.metro-sound-select').forEach((s) => { s.innerHTML = opts(METRO_SOUNDS); });
   document.querySelectorAll('.rhythm-sound-select').forEach((s) => { s.innerHTML = opts(RHYTHM_SOUNDS); });
+  // Play the chosen sound once so it can be auditioned while picking.
+  document.querySelectorAll('.metro-sound-select, .rhythm-sound-select').forEach((s) => {
+    s.addEventListener('change', () => audio.play(s.value, 'normal', 0));
+  });
 }
 
 // Sight-reading and metronome sounds are separate lists since v1.1; fix older saved choices.

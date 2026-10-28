@@ -10,16 +10,36 @@ export const METRO_SOUNDS = {
   rim: 'Rim click',
   cowbell: 'Cowbell',
   hihat: 'Hi-hat',
+  clave: 'Clave',
+  sticks: 'Sticks',
+  tick: 'Mechanical tick',
+  triangle: 'Triangle',
+  bell: 'Bell',
+  shaker: 'Shaker',
+  blip: 'Electronic blip',
 };
 
 export const RHYTHM_SOUNDS = {
   snare: 'Snare',
+  'snare-m1': 'Muffled snare 1 (piccolo)',
+  'snare-m2': 'Muffled snare 2 (high)',
+  'snare-m3': 'Muffled snare 3 (medium)',
+  'snare-m4': 'Muffled snare 4 (low)',
+  'snare-m5': 'Muffled snare 5 (deep)',
+  rimshot: 'Rimshot',
+  brush: 'Brush snare',
   clap: 'Clap',
   xstick: 'Cross-stick',
   conga: 'Conga',
   tom: 'Tom',
   marimba: 'Marimba',
+  bongo: 'Bongo',
+  cajon: 'Cajon',
+  kick: 'Bass drum',
 };
+
+// Body pitch (Hz) of the five muffled snare tunings, highest first.
+const MUFFLED_SNARE_HZ = [330, 260, 210, 170, 135];
 
 export const SOUNDS = { ...METRO_SOUNDS, ...RHYTHM_SOUNDS };
 
@@ -113,6 +133,54 @@ function synth(name, variant, sr) {
       fn = (t) => hp(noise()) * 0.65 * env(t, 0.018);
       break;
     }
+    case 'clave': {
+      const f = 2500 * p;
+      len = 0.08;
+      fn = (t) => Math.sin(TWO_PI * f * t) * env(t, 0.02) * 0.85;
+      break;
+    }
+    case 'sticks': {
+      const f = 1250 * p;
+      len = 0.05;
+      const bp = biquad('bandpass', 3000 * p, 1.2, sr);
+      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.45 + Math.sin(TWO_PI * f * 2.3 * t) * 0.25 + bp(noise()) * 0.6) * env(t, 0.009);
+      break;
+    }
+    case 'tick': {
+      // Wind-up metronome: a dry, woody tick with a short noise edge.
+      const f = 3200 * p;
+      len = 0.03;
+      const hp = biquad('highpass', 2000, 0.7, sr);
+      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.4 + hp(noise()) * 0.6) * env(t, 0.003) * 1.15;
+      break;
+    }
+    case 'triangle': {
+      const f = 1900 * p;
+      len = 0.6;
+      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.5 + Math.sin(TWO_PI * f * 2.76 * t) * 0.25
+        + Math.sin(TWO_PI * f * 5.4 * t) * 0.12) * env(t, 0.18) * 0.9;
+      break;
+    }
+    case 'bell': {
+      const f = 1046.5 * p;
+      len = 0.5;
+      fn = (t) => (Math.sin(TWO_PI * f * t) * 0.55 + Math.sin(TWO_PI * f * 2.4 * t) * 0.2 * env(t, 0.05)
+        + Math.sin(TWO_PI * f * 4 * t) * 0.12 * env(t, 0.02)) * env(t, 0.14);
+      break;
+    }
+    case 'shaker': {
+      len = 0.07;
+      const bp = biquad('bandpass', 6000 * p, 0.8, sr);
+      fn = (t) => bp(noise()) * 1.4 * Math.min(1, t / 0.0015) * env(t, 0.02);
+      normalize = true;
+      break;
+    }
+    case 'blip': {
+      const f = 1000 * p;
+      len = 0.05;
+      fn = (t) => (Math.sin(TWO_PI * f * t) >= 0 ? 1 : -1) * 0.5 * Math.min(1, t / 0.0005) * env(t, 0.015);
+      break;
+    }
     // ---- sight-reading voices ----
     case 'snare': {
       len = 0.32;
@@ -127,6 +195,47 @@ function synth(name, variant, sr) {
         const snares = (wires(n) * 1.6 + air(n) * 0.5) * env(t, 0.11);
         return body * 0.8 + snares + n * 0.4 * env(t, 0.002);
       };
+      break;
+    }
+    case 'snare-m1':
+    case 'snare-m2':
+    case 'snare-m3':
+    case 'snare-m4':
+    case 'snare-m5': {
+      // Muffled snare: short, damped body and dark wires, like a towel on the head.
+      const f = MUFFLED_SNARE_HZ[Number(name.slice(-1)) - 1];
+      len = 0.2;
+      normalize = true;
+      const body1 = osc(sr);
+      const body2 = osc(sr);
+      const wires = biquad('bandpass', f * 11, 0.7, sr);
+      const dark = biquad('lowpass', 3500, 0.7, sr);
+      fn = (t) => {
+        const n = noise();
+        const body = (body1(f * (1 + 0.3 * env(t, 0.01))) * 0.8 + body2(f * 1.6) * 0.2) * env(t, 0.035);
+        return body + dark(wires(n) * 1.4) * env(t, 0.06) + n * 0.15 * env(t, 0.0015);
+      };
+      break;
+    }
+    case 'rimshot': {
+      len = 0.3;
+      normalize = true;
+      const body = osc(sr);
+      const ring = osc(sr);
+      const wires = biquad('bandpass', 3800, 0.6, sr);
+      fn = (t) => {
+        const n = noise();
+        return body(220 * (1 + 0.3 * env(t, 0.01))) * 0.7 * env(t, 0.05) + ring(900) * 0.5 * env(t, 0.03)
+          + wires(n) * 1.2 * env(t, 0.09) + n * 0.6 * env(t, 0.003);
+      };
+      break;
+    }
+    case 'brush': {
+      len = 0.25;
+      normalize = true;
+      const bp = biquad('bandpass', 3000, 0.5, sr);
+      const body = osc(sr);
+      fn = (t) => bp(noise()) * Math.min(1, t / 0.002) * env(t, 0.07) + body(200) * 0.25 * env(t, 0.03);
       break;
     }
     case 'clap': {
@@ -181,8 +290,27 @@ function synth(name, variant, sr) {
         + 0.06 * Math.sin(TWO_PI * f * 9.5 * t) * env(t, 0.01));
       break;
     }
+    case 'bongo': {
+      len = 0.2;
+      normalize = true;
+      const o = osc(sr);
+      fn = (t) => o(400 * (1 + 0.15 * env(t, 0.008))) * env(t, 0.06) + noise() * 0.2 * env(t, 0.002);
+      break;
+    }
+    case 'cajon': {
+      len = 0.3;
+      normalize = true;
+      const o = osc(sr);
+      const slap = biquad('bandpass', 2200, 0.8, sr);
+      fn = (t) => {
+        const n = noise();
+        return o(95 * (1 + 0.5 * env(t, 0.015))) * env(t, 0.08) + slap(n) * 0.9 * env(t, 0.03) + n * 0.3 * env(t, 0.002);
+      };
+      break;
+    }
     case 'kick': {
       len = 0.3;
+      normalize = true;
       const o = osc(sr);
       fn = (t) => o(50 + 90 * env(t, 0.03)) * env(t, 0.12);
       break;

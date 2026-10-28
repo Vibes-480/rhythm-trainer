@@ -138,7 +138,8 @@ export function applyTheme() {
   if (t === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name=theme-color]').content = dark ? '#101216' : '#f4f5f7';
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = dark ? '#101216' : '#f4f5f7';
 }
 
 export function init({ onReplaced }) {

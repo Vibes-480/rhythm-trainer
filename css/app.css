@@ -15,6 +15,10 @@
   --ring: #7cc4c7;
   --dot-off: #4597a0;
   --fab-dark: #182425;
+  --fab-ink: #ffffff;
+  --score-bg: var(--card);
+  --score-edge: var(--ink);
+  --knob: #ffffff;
   --on-teal: #ffffff;
   --hit: #1f9d55;
   --miss: #d64545;
@@ -26,17 +30,19 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e1415; --card: #182122; --ink: #e8efef; --muted: #8fa0a2; --line: #26322f;
-    --teal: #4ea9ad; --teal-ink: #6cc6ca; --teal-soft: #3b7f83; --teal-deep: #0f2829; --m-btn-ink: #e6f6f7;
-    --metro-bg: #24585b; --ring: #357377; --dot-off: #2a6266; --fab-dark: #e8efef; --on-teal: #ffffff;
+    --bg: #000000; --card: #343a42; --ink: #f1f4f5; --muted: #a3abb3; --line: #454c55;
+    --score-bg: #1f2226; --score-edge: #3a3f46; --fab-ink: #ffffff; --knob: #7b8188;
+    --teal: #1ab4bc; --teal-ink: #3fc8cf; --teal-soft: #3b7f83; --teal-deep: #0f2829; --m-btn-ink: #e6f6f7;
+    --metro-bg: #24585b; --ring: #357377; --dot-off: #2a6266; --fab-dark: #1f2226; --on-teal: #ffffff;
     --hit: #3ecf7f; --miss: #ff6b6b; --warn: #f0b429; --sheet-head: #000000; --shadow: 0 3px 12px rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0e1415; --card: #182122; --ink: #e8efef; --muted: #8fa0a2; --line: #26322f;
-  --teal: #4ea9ad; --teal-ink: #6cc6ca; --teal-soft: #3b7f83; --teal-deep: #0f2829; --m-btn-ink: #e6f6f7;
-  --metro-bg: #24585b; --ring: #357377; --dot-off: #2a6266; --fab-dark: #e8efef; --on-teal: #ffffff;
+  --bg: #000000; --card: #343a42; --ink: #f1f4f5; --muted: #a3abb3; --line: #454c55;
+  --score-bg: #1f2226; --score-edge: #3a3f46; --fab-ink: #ffffff; --knob: #7b8188;
+  --teal: #1ab4bc; --teal-ink: #3fc8cf; --teal-soft: #3b7f83; --teal-deep: #0f2829; --m-btn-ink: #e6f6f7;
+  --metro-bg: #24585b; --ring: #357377; --dot-off: #2a6266; --fab-dark: #1f2226; --on-teal: #ffffff;
   --hit: #3ecf7f; --miss: #ff6b6b; --warn: #f0b429; --sheet-head: #000000; --shadow: 0 3px 12px rgba(0, 0, 0, .5);
   color-scheme: dark;
 }
@@ -94,26 +100,27 @@ main { max-width: 640px; margin: 0 auto; }
 .score { position: relative; margin: 0 4px; }
 .notation { width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
 .notation .nrow {
-  background: var(--card); border-left: 5px solid var(--ink); border-right: 5px solid var(--ink);
+  background: var(--score-bg); border-left: 5px solid var(--score-edge); border-right: 5px solid var(--score-edge);
   padding: 0 4px; transition: opacity .2s, background-color .2s;
 }
-.notation.reading-view .nrow.current { background: color-mix(in srgb, var(--teal) 12%, var(--card)); }
+.notation.reading-view .nrow.current { background: color-mix(in srgb, var(--teal) 12%, var(--score-bg)); }
 .notation.reading-view .nrow.ahead { opacity: .85; }
 .notation svg { display: block; fill: var(--ink); }
 .notation svg [fill]:not([fill="none"]) { fill: var(--ink); }
 .notation svg [stroke]:not([stroke="none"]) { stroke: var(--ink); }
 .notation svg text { fill: var(--ink); }
+.notation .vf-stem path { stroke: var(--ink); }
 /* Noteheads often have no fill attribute and inherit it from the note group. */
 .notation .vf-stavenote.ghost, .notation .vf-stavenote.ghost [fill]:not([fill="none"]) { fill: var(--muted); }
-.notation .vf-stavenote.ghost [stroke]:not([stroke="none"]) { stroke: var(--muted); }
+.notation .vf-stavenote.ghost [stroke]:not([stroke="none"]), .notation .vf-stavenote.ghost .vf-stem path { stroke: var(--muted); }
 .notation .vf-stavenote.playing, .notation .vf-stavenote.playing [fill]:not([fill="none"]) { fill: var(--teal); }
-.notation .vf-stavenote.playing [stroke]:not([stroke="none"]) { stroke: var(--teal); }
+.notation .vf-stavenote.playing [stroke]:not([stroke="none"]), .notation .vf-stavenote.playing .vf-stem path { stroke: var(--teal); }
 .notation .vf-stavenote.hit, .notation .vf-stavenote.hit [fill]:not([fill="none"]) { fill: var(--hit); }
-.notation .vf-stavenote.hit [stroke]:not([stroke="none"]) { stroke: var(--hit); }
+.notation .vf-stavenote.hit [stroke]:not([stroke="none"]), .notation .vf-stavenote.hit .vf-stem path { stroke: var(--hit); }
 .notation .vf-stavenote.off, .notation .vf-stavenote.off [fill]:not([fill="none"]) { fill: var(--warn); }
-.notation .vf-stavenote.off [stroke]:not([stroke="none"]) { stroke: var(--warn); }
+.notation .vf-stavenote.off [stroke]:not([stroke="none"]), .notation .vf-stavenote.off .vf-stem path { stroke: var(--warn); }
 .notation .vf-stavenote.miss, .notation .vf-stavenote.miss [fill]:not([fill="none"]) { fill: var(--miss); }
-.notation .vf-stavenote.miss [stroke]:not([stroke="none"]) { stroke: var(--miss); }
+.notation .vf-stavenote.miss [stroke]:not([stroke="none"]), .notation .vf-stavenote.miss .vf-stem path { stroke: var(--miss); }
 .notation .error { color: var(--miss); padding: 20px; background: var(--card); }
 .countin {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -134,7 +141,7 @@ main { max-width: 640px; margin: 0 auto; }
 }
 .switch::after {
   content: ""; position: absolute; top: 50%; left: -2px; width: 22px; height: 22px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transform: translateY(-50%); transition: left .15s, background .15s;
+  background: var(--knob); box-shadow: 0 1px 3px rgba(0,0,0,.35); transform: translateY(-50%); transition: left .15s, background .15s;
 }
 .switch:checked { background: color-mix(in srgb, var(--teal) 55%, transparent); }
 .switch:checked::after { left: 18px; background: var(--teal); }
@@ -154,7 +161,7 @@ main { max-width: 640px; margin: 0 auto; }
   display: flex; align-items: center; z-index: 8;
 }
 .fab-new {
-  width: 66px; height: 66px; border-radius: 50%; border: 0; background: var(--fab-dark); color: var(--card);
+  width: 66px; height: 66px; border-radius: 50%; border: 0; background: var(--fab-dark); color: var(--fab-ink);
   display: grid; place-items: center; margin-right: -12px; box-shadow: var(--shadow);
 }
 .fab-new svg { width: 30px; height: 30px; }

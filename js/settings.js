@@ -142,7 +142,7 @@ export function applyTheme() {
   const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   const meta = document.querySelector('meta[name=theme-color]');
   const metro = document.body.classList.contains('metro-on');
-  if (meta) meta.content = metro ? (dark ? '#24585b' : '#59aeb2') : dark ? '#0e1415' : '#eef2f2';
+  if (meta) meta.content = metro ? (dark ? '#24585b' : '#59aeb2') : dark ? '#000000' : '#eef2f2';
 }
 
 export function init({ onReplaced }) {

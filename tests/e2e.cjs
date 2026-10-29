@@ -335,7 +335,7 @@ async function tagNotes(page, noteSound) {
       return { evs: window.__played, expected: exp };
     });
     // Count-in: 4 clicks, then the notes.
-    const clicks = evs.filter((e) => e.name === 'click');
+    const clicks = evs.filter((e) => e.name === 'recorded');
     const notes = evs.filter((e) => e.name === 'snare');
     assert.equal(clicks.length, 4);
     assert.equal(notes.length, expected.length);
@@ -349,14 +349,14 @@ async function tagNotes(page, noteSound) {
     const metroOpts = await page.$$eval('[data-bind="metronome.sound"] option', (o) => o.map((x) => x.value));
     assert.deepEqual(rhythmOpts, ['snare', 'snare-m1', 'snare-m2', 'snare-m3', 'snare-m4', 'snare-m5', 'rimshot', 'brush',
       'clap', 'xstick', 'conga', 'tom', 'marimba', 'bongo', 'cajon', 'kick']);
-    assert.equal(metroOpts.length, 13);
+    assert.equal(metroOpts.length, 14);
     assert.ok(rhythmOpts.every((o) => !metroOpts.includes(o)));
     await setGen(page, { sound: 'conga', bpm: 240, bars: 1, loop: false, countIn: false, click: true });
     await page.tap('#r-new');
     await page.tap('#r-play');
     await page.waitForFunction(() => document.querySelector('#r-play').dataset.playing === 'false', null, { timeout: 10000 });
     const names = new Set((await played(page)).map((e) => e.name));
-    assert.deepEqual([...names].sort(), ['click', 'conga']);
+    assert.deepEqual([...names].sort(), ['conga', 'recorded']);
   });
 
   await test('rhythm: swing delays off-beat 8ths', async (page) => {

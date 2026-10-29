@@ -1,10 +1,10 @@
 // Offline support: cache the app shell, serve it cache-first, refresh in the background.
-const CACHE = 'rhythm-trainer-v1.3.0';
+const CACHE = 'rhythm-trainer-v1.4.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/audio.js', 'js/metronome.js', 'js/notation.js', 'js/playalong.js', 'js/playback.js',
   'js/reading.js', 'js/rhythm-ui.js', 'js/rhythm.js', 'js/scoring.js', 'js/settings.js', 'js/store.js',
-  'js/snare-sample.js', 'js/transport.js', 'js/ui.js', 'js/vendor/vexflow.js',
+  'js/snare-sample.js', 'js/click-sample.js', 'js/transport.js', 'js/ui.js', 'js/vendor/vexflow.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
 ];
 

@@ -5,7 +5,7 @@ import * as rhythmUi from './rhythm-ui.js';
 import * as settings from './settings.js';
 import { initSheets } from './ui.js';
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 
 const tabs = { rhythm: rhythmUi, metronome, menu: settings };
 
@@ -22,8 +22,14 @@ function fillSoundSelects() {
 // Sight-reading and metronome sounds are separate lists since v1.1; fix older saved choices.
 function migrateSounds() {
   if (!(state.gen.sound in RHYTHM_SOUNDS)) state.gen.sound = 'snare';
-  if (!(state.gen.clickSound in METRO_SOUNDS)) state.gen.clickSound = 'click';
-  if (!(state.metronome.sound in METRO_SOUNDS)) state.metronome.sound = 'click';
+  if (!(state.gen.clickSound in METRO_SOUNDS)) state.gen.clickSound = 'recorded';
+  if (!(state.metronome.sound in METRO_SOUNDS)) state.metronome.sound = 'recorded';
+  // v1.4 made the recorded click the default; move people still on the old default click to it once.
+  if (!state.recordedClick) {
+    if (state.gen.clickSound === 'click') state.gen.clickSound = 'recorded';
+    if (state.metronome.sound === 'click') state.metronome.sound = 'recorded';
+    state.recordedClick = true;
+  }
   save();
 }
 

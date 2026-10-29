@@ -7,7 +7,7 @@ const KEY = 'rhythm-trainer.v1';
 export function defaults() {
   return {
     metronome: {
-      bpm: 120, num: 4, den: 4, sub: 1, markOne: true, sound: 'click', pads: null, countdown: 0, volume: 80, elapsed: 0,
+      bpm: 120, num: 4, den: 4, sub: 1, markOne: true, sound: 'recorded', pads: null, countdown: 0, volume: 80, elapsed: 0,
       gap: { on: false, play: 2, mute: 2 },
       step: { on: false, mode: 'up', amount: 5, every: 4, unit: 'bars', target: 160 },
     },

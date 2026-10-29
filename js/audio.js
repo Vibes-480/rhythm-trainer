@@ -2,10 +2,12 @@
 // and a mapping from tap timestamps to the audio clock.
 
 import { SNARE_SAMPLE, SNARE_SAMPLE_RATE } from './snare-sample.js';
+import { CLICK_ACCENT, CLICK_NORMAL, CLICK_SAMPLE_RATE } from './click-sample.js';
 
 // Metronome-style clicks and drum-like voices for sight-reading are kept separate,
 // so the rhythm you read never sounds like the click.
 export const METRO_SOUNDS = {
+  recorded: 'Recorded click',
   click: 'Click',
   woodblock: 'Woodblock',
   beep: 'Beep',
@@ -88,24 +90,26 @@ function osc(sr) {
 
 const env = (t, tau) => Math.exp(-t / tau);
 
-// Recorded snare hit as floats, decoded once.
-let snarePcm = null;
-function snareSample() {
-  if (!snarePcm) {
-    const bin = atob(SNARE_SAMPLE);
-    snarePcm = new Float32Array(bin.length / 2);
-    for (let i = 0; i < snarePcm.length; i++) {
+// Recorded sounds as floats, decoded once each.
+const pcmCache = new Map();
+function decodePcm(b64) {
+  let pcm = pcmCache.get(b64);
+  if (!pcm) {
+    const bin = atob(b64);
+    pcm = new Float32Array(bin.length / 2);
+    for (let i = 0; i < pcm.length; i++) {
       const v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
-      snarePcm[i] = (v >= 0x8000 ? v - 0x10000 : v) / 32768;
+      pcm[i] = (v >= 0x8000 ? v - 0x10000 : v) / 32768;
     }
+    pcmCache.set(b64, pcm);
   }
-  return snarePcm;
+  return pcm;
 }
 
-// Plays the recorded snare at any output rate; pitch > 1 plays it higher and shorter.
-function snareVoice(pitch) {
-  const pcm = snareSample();
-  const step = SNARE_SAMPLE_RATE * pitch;
+// Plays a recorded sound at any output rate; pitch > 1 plays it higher and shorter.
+function sampleVoice(b64, rate, pitch = 1) {
+  const pcm = decodePcm(b64);
+  const step = rate * pitch;
   return {
     len: pcm.length / step,
     fn: (t) => {
@@ -116,6 +120,7 @@ function snareVoice(pitch) {
     },
   };
 }
+const snareVoice = (pitch) => sampleVoice(SNARE_SAMPLE, SNARE_SAMPLE_RATE, pitch);
 
 function synth(name, variant, sr) {
   const p = VARIANT_PITCH[variant] || 1;
@@ -125,6 +130,14 @@ function synth(name, variant, sr) {
   let fn;
   let normalize = false;
   switch (name) {
+    case 'recorded': {
+      // Accent has its own recording; subdivisions use the normal click pitched down.
+      const v = variant === 'accent' ? sampleVoice(CLICK_ACCENT, CLICK_SAMPLE_RATE)
+        : sampleVoice(CLICK_NORMAL, CLICK_SAMPLE_RATE, variant === 'sub' ? 0.8 : 1);
+      len = v.len;
+      fn = (t) => v.fn(t) * 0.9;
+      break;
+    }
     case 'click': {
       const f = 1500 * p;
       len = 0.04;

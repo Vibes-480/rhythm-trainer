@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS = {
   loop: true,
   sound: 'snare',
   click: true,
-  clickSound: 'click',
+  clickSound: 'recorded',
 };
 
 export function parseTimeSig(ts) {

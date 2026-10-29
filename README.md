@@ -6,7 +6,7 @@ It's modelled on the features and layout of RhythmBot (including the Pro ones), 
 ## Features
 
 **Metronome**: dial with number of beats and clicks per beat (turn the white disk to change tempo), tempo 20–300 BPM, tap tempo, 1–12 beats per bar with a quarter or eighth beat unit, 1–6 clicks per beat,
-per-click accent / normal / soft / silent, mark beat one, 13 click sounds (click, woodblock, beep, rim click, cowbell, hi-hat, clave, sticks, mechanical tick, triangle, bell, shaker, electronic blip), practice timer, countdown timer,
+per-click accent / normal / soft / silent, mark beat one, 14 click sounds (recorded click, click, woodblock, beep, rim click, cowbell, hi-hat, clave, sticks, mechanical tick, triangle, bell, shaker, electronic blip), practice timer, countdown timer,
 gap click (play X bars, silent Y bars), stepwise trainer (increase, decrease or alternate every N bars or seconds),
 and a setlist of saved setups.
 

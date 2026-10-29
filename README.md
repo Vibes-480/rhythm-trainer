@@ -15,7 +15,7 @@ new-rhythm and play buttons, and a full settings list behind "All".
 
 **Rhythm generator**: 1/2/4/8 bars, complexity 1–10, BPM, 11 time signatures (2/4 to 7/4, 5/8, 6/8, 7/8, 9/8, 12/8),
 8th or 16th subdivision, triplets, ghost notes, accents, swing, space (rests), count-in, loop or once,
-its own 16 sight-reading sounds (snare, five muffled snares tuned from piccolo down to deep, rimshot, brush snare, clap, cross-stick, conga, tom, marimba, bongo, cajon, bass drum; each plays once when you pick it), metronome click and click sound, built-in and saved presets. Tapping "New rhythm" while it plays swaps in the new rhythm at the next loop.
+its own 16 sight-reading sounds (snare recorded from a drum hit, five muffled snares made from it, tuned from piccolo down to deep, rimshot, brush snare, clap, cross-stick, conga, tom, marimba, bongo, cajon, bass drum; each plays once when you pick it), metronome click and click sound, built-in and saved presets. Tapping "New rhythm" while it plays swaps in the new rhythm at the next loop.
 
 **Reading Mode**: endless sight-reading. Rows of new bars scroll in until you stop, or for a 1, 2 or 5 minute session.
 

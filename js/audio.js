@@ -1,6 +1,8 @@
 // Audio engine: synthesized sounds, sample-accurate lookahead scheduler,
 // and a mapping from tap timestamps to the audio clock.
 
+import { SNARE_SAMPLE, SNARE_SAMPLE_RATE } from './snare-sample.js';
+
 // Metronome-style clicks and drum-like voices for sight-reading are kept separate,
 // so the rhythm you read never sounds like the click.
 export const METRO_SOUNDS = {
@@ -38,7 +40,8 @@ export const RHYTHM_SOUNDS = {
   kick: 'Bass drum',
 };
 
-// Body pitch (Hz) of the five muffled snare tunings, highest first.
+// Body pitch of the recorded snare, and of the five muffled tunings (highest first).
+const SNARE_BODY_HZ = 248;
 const MUFFLED_SNARE_HZ = [330, 260, 210, 170, 135];
 
 export const SOUNDS = { ...METRO_SOUNDS, ...RHYTHM_SOUNDS };
@@ -85,38 +88,32 @@ function osc(sr) {
 
 const env = (t, tau) => Math.exp(-t / tau);
 
-// Snare drum: inharmonic head modes, a stick click, wire rattle driven by the head,
-// a little saturation and a few early reflections of a small room.
-const DRUM_MODES = [[1, 1, 1], [1.59, 0.55, 0.7], [2.14, 0.35, 0.5], [2.3, 0.3, 0.45], [2.65, 0.18, 0.35]];
+// Recorded snare hit as floats, decoded once.
+let snarePcm = null;
+function snareSample() {
+  if (!snarePcm) {
+    const bin = atob(SNARE_SAMPLE);
+    snarePcm = new Float32Array(bin.length / 2);
+    for (let i = 0; i < snarePcm.length; i++) {
+      const v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+      snarePcm[i] = (v >= 0x8000 ? v - 0x10000 : v) / 32768;
+    }
+  }
+  return snarePcm;
+}
 
-// Tight, punchy studio snare: ratios measured from a reference recording (body around 250 Hz).
-const TIGHT_SNARE_MODES = [[0.75, 0.12, 1.2], [0.885, 0.5, 0.6], [1, 1, 0.7], [2.03, 0.4, 1.4], [2.25, 0.35, 1.3], [3.22, 0.3, 1], [4.66, 0.3, 0.8]];
-
-function snareVoice(sr, noise, { f, head, wires, wireLevel, tone, modes = DRUM_MODES, tail = 0, tailTau = 0.07, crackLevel = 0.3 }) {
-  const oscs = modes.map(() => osc(sr));
-  const stickHp = biquad('highpass', 5000, 0.7, sr);
-  const stickBp = biquad('bandpass', 1800, 1.2, sr);
-  const crack = biquad('bandpass', 900, 0.8, sr);
-  const wireHp = biquad('highpass', 1800, 0.7, sr);
-  const wireBp = biquad('bandpass', 3000 + f * 8, 0.5, sr);
-  const lp = biquad('lowpass', tone, 0.7, sr);
-  const taps = [[0.011, 0.18], [0.017, 0.12], [0.023, 0.08]].map(([d, g]) => [Math.round(d * sr), g]);
-  const hist = new Float32Array(taps[taps.length - 1][0] + 1);
-  let i = 0;
-  return (t) => {
-    const n = noise();
-    const bend = 1 + 0.06 * env(t, 0.015);
-    let h = 0;
-    modes.forEach(([r, a, d], k) => { h += oscs[k](f * r * bend) * a * ((1 - tail) * env(t, head * d) + tail * env(t, tailTau * d)); });
-    const stick = stickHp(n) * 0.9 * env(t, 0.0012) + stickBp(n) * 0.6 * env(t, 0.004);
-    const rattle = 0.6 + 0.4 * Math.min(1, Math.abs(h));
-    const w = (wireHp(n) * 0.7 + wireBp(n) * 0.9) * wireLevel * Math.min(1, t / 0.0015) * env(t, wires) * rattle;
-    const dry = Math.tanh(1.3 * lp(h * 0.9 + stick + w + crack(n) * crackLevel * env(t, 0.03)));
-    let y = dry;
-    for (const [d, g] of taps) y += g * hist[(i - d + hist.length) % hist.length];
-    hist[i] = dry;
-    i = (i + 1) % hist.length;
-    return y;
+// Plays the recorded snare at any output rate; pitch > 1 plays it higher and shorter.
+function snareVoice(pitch) {
+  const pcm = snareSample();
+  const step = SNARE_SAMPLE_RATE * pitch;
+  return {
+    len: pcm.length / step,
+    fn: (t) => {
+      const x = t * step;
+      const i = Math.floor(x);
+      if (i + 1 >= pcm.length) return 0;
+      return pcm[i] + (pcm[i + 1] - pcm[i]) * (x - i);
+    },
   };
 }
 
@@ -218,9 +215,10 @@ function synth(name, variant, sr) {
     }
     // ---- sight-reading voices ----
     case 'snare': {
-      len = 0.55;
+      const v = snareVoice(1);
+      len = v.len;
       normalize = true;
-      fn = snareVoice(sr, noise, { f: 250, head: 0.012, tail: 0.12, wires: 0.035, wireLevel: 0.3, tone: 9000, crackLevel: 1, modes: TIGHT_SNARE_MODES });
+      fn = v.fn;
       break;
     }
     case 'snare-m1':
@@ -228,11 +226,14 @@ function synth(name, variant, sr) {
     case 'snare-m3':
     case 'snare-m4':
     case 'snare-m5': {
-      // Muffled: damped head and short, dark wires, like a towel on the drum.
+      // Muffled: the recorded snare retuned, darker and damped, like a towel on the drum.
       const f = MUFFLED_SNARE_HZ[Number(name.slice(-1)) - 1];
-      len = 0.3;
+      const v = snareVoice(f / SNARE_BODY_HZ);
+      const lp1 = biquad('lowpass', 2500 + f * 6, 0.7, sr);
+      const lp2 = biquad('lowpass', 2500 + f * 6, 0.7, sr);
+      len = Math.min(v.len, 0.25);
       normalize = true;
-      fn = snareVoice(sr, noise, { f, head: 0.009, tail: 0.08, wires: 0.03, wireLevel: 0.25, tone: 2500 + f * 6, crackLevel: 0.7, modes: TIGHT_SNARE_MODES });
+      fn = (t) => lp2(lp1(v.fn(t))) * env(t, 0.06);
       break;
     }
     case 'rimshot': {

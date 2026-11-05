@@ -10,7 +10,7 @@ per-click accent / normal / soft / silent, mark beat one, 14 click sounds (recor
 gap click (play X bars, silent Y bars), stepwise trainer (increase, decrease or alternate every N bars or seconds),
 and a setlist of saved setups.
 
-**Rhythm screen**: summary bar (All / Bars / Complexity / BPM), one bar per row, Reading Mode and Play Along switches,
+**Rhythm screen**: summary bar (All / Bars / Complexity / BPM), one bar per row (two on wide screens, with a bar line between them), Reading Mode and Play Along switches,
 new-rhythm and play buttons, and a full settings list behind "All".
 
 **Rhythm generator**: 1/2/4/8 bars, complexity 1–10, BPM, 11 time signatures (2/4 to 7/4, 5/8, 6/8, 7/8, 9/8, 12/8),
@@ -25,6 +25,10 @@ and a "Drill these" button that builds a new rhythm from the groupings you misse
 
 **Menu**: tap-latency calibration (do it once per phone or headphones), timing strictness, hear-the-rhythm toggle,
 keep-screen-on while playing, light or dark theme, and export/import backups.
+
+On big tablets (like a 14.6" one) everything is scaled up; held sideways the music gets two bars per row and the metronome dial sits beside its controls, held upright each bar gets its own large row. It follows rotation automatically.
+
+New rhythms never repeat the bar before, and the same beat twice in a row is made less likely.
 
 Everything is stored on the device (localStorage). There are no accounts and no tracking.
 

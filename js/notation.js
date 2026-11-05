@@ -56,6 +56,15 @@ function buildGroupNotes(group, den, gi, barIndex, noteMap) {
   return { notes, beams, tuplets };
 }
 
+// How to lay out rows at this width: bars per row, and how much to enlarge the notes.
+// Big tablets held upright (scaled up but not in the wide layout) get one large bar per row.
+export function rowLayout(width) {
+  const root = document.documentElement;
+  const z = parseFloat(getComputedStyle(root).getPropertyValue('--z')) || 1;
+  if (z > 1 && !root.classList.contains('wide')) return { perRow: 1, scale: 1.3 };
+  return { perRow: width >= 600 ? 2 : 1, scale: 1 };
+}
+
 // Rough width a bar needs so dense 16ths don't collide.
 export function barMinWidth(bar) {
   let count = 0;
@@ -65,14 +74,15 @@ export function barMinWidth(bar) {
 
 // Render one row of bars into `el` (cleared first).
 // Returns a Map of "bar:group:slot" -> StaveNote for highlighting.
-export function renderRow(el, bars, { width, firstBarIndex = 0, showTimeSig = false, height = 112 } = {}) {
+export function renderRow(el, bars, { width, firstBarIndex = 0, showTimeSig = false, height = 112, scale = 1 } = {}) {
   const { Renderer, Stave, Voice, Formatter } = VF();
   el.innerHTML = '';
   const tsWidth = showTimeSig ? 30 : 0;
   // Draw at least as wide as the notes need, then scale the SVG down to fit,
   // so very dense bars (e.g. 12/8 in 16ths on a phone) never collide.
   const mins = bars.map(barMinWidth);
-  const natural = Math.max(width, mins.reduce((a, b) => a + b, 0) + tsWidth + 2);
+  // `scale` > 1 draws narrower and stretches the SVG to `width`, so notes come out bigger.
+  const natural = Math.max(width / scale, mins.reduce((a, b) => a + b, 0) + tsWidth + 2);
   const renderer = new Renderer(el, Renderer.Backends.SVG);
   renderer.resize(natural, height);
   const ctx = renderer.getContext();
@@ -102,6 +112,14 @@ export function renderRow(el, bars, { width, firstBarIndex = 0, showTimeSig = fa
     beams.forEach((b) => b.setContext(ctx).draw());
     tuplets.forEach((t) => t.setContext(ctx).draw());
     x += w;
+    // A one-line stave draws zero-height bar lines, so mark where this bar ends
+    // when another bar follows on the same row (the row edges mark the outer ends).
+    if (i < bars.length - 1) {
+      const y = stave.getYForLine(0);
+      ctx.openGroup('barline');
+      ctx.fillRect(x - 0.75, y - 14, 1.5, 28);
+      ctx.closeGroup();
+    }
   });
   const svg = el.querySelector('svg');
   svg.setAttribute('viewBox', `0 0 ${natural} ${height}`);

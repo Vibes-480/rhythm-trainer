@@ -172,3 +172,20 @@ test('sight-reading sounds are separate from metronome sounds and render cleanly
     assert.ok(onset / 44100 < 0.006, `${k} onset ${(onset / 44.1).toFixed(1)} ms`);
   }
 });
+
+test('a bar is never an exact copy of the bar before it, and repeated beats are rarer', async () => {
+  const { generateRhythm } = await import('../js/rhythm.js');
+  const rng = makeRng(21);
+  const sig = (b) => b.groups.map((g) => g.key + (g.accent || []).join('') + (g.ghost || []).join('')).join('|');
+  let sameBeat = 0;
+  let beats = 0;
+  for (let i = 0; i < 2000; i++) {
+    const bars = generateRhythm({ ...DEFAULT_SETTINGS, complexity: 1, bars: 4 }, rng);
+    for (let b = 1; b < bars.length; b++) assert.notEqual(sig(bars[b]), sig(bars[b - 1]));
+    for (const bar of bars) {
+      bar.groups.forEach((g, j) => { if (j) { beats++; if (g.key === bar.groups[j - 1].key) sameBeat++; } });
+    }
+  }
+  // Without the re-roll about 40% of beats repeat the one before at complexity 1.
+  assert.ok(sameBeat / beats < 0.32, `${(100 * sameBeat / beats).toFixed(1)}% repeated beats`);
+});

@@ -5,7 +5,7 @@ import * as rhythmUi from './rhythm-ui.js';
 import * as settings from './settings.js';
 import { initSheets } from './ui.js';
 
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 
 const tabs = { rhythm: rhythmUi, metronome, menu: settings };
 
@@ -33,6 +33,17 @@ function migrateSounds() {
   save();
 }
 
+// Big tablets get everything scaled up; phones and smaller tablets (like an 11" one) stay exactly as they were.
+// Sideways on a big screen also switches to the wide layout (two bars per row,
+// metronome dial beside its controls). Re-run on every resize and rotation.
+function applyScale() {
+  const short = Math.min(innerWidth, innerHeight);
+  const z = Math.min(1.5, Math.max(1, 1 + (short - 800) / 440));
+  const root = document.documentElement;
+  root.style.setProperty('--z', z.toFixed(3));
+  root.classList.toggle('wide', z > 1 && innerWidth > innerHeight && innerWidth / z >= 960);
+}
+
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t) => { t.hidden = t.id !== `tab-${name}`; });
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
@@ -48,6 +59,8 @@ function applyCalibration() {
 }
 
 function init() {
+  applyScale();
+  window.addEventListener('resize', applyScale);
   migrateSounds();
   fillSoundSelects();
   initSheets();

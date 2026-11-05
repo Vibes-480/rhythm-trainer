@@ -1,13 +1,12 @@
 // Reading Mode: rows of new bars keep scrolling in until you stop.
 import { generateBar } from './rhythm.js';
-import { renderRow, barMinWidth, setNoteClass } from './notation.js';
+import { renderRow, barMinWidth, setNoteClass, rowLayout } from './notation.js';
 import { state } from './store.js';
 import { scheduler, claim, release, isOwner } from './transport.js';
 import { rhythmBarEvents, countInBar } from './playback.js';
 import { escapeHtml } from './ui.js';
 
 const $ = (id) => document.getElementById(id);
-const VISIBLE_ROWS = 4;
 
 let bars = [];
 let rows = []; // { start, count, el }
@@ -16,16 +15,18 @@ let noteMap = new Map();
 let playing = false;
 let lastPlaying = null;
 let width = 360;
+let layout = { perRow: 1, scale: 1 };
+let visibleRows = 4;
 let hooks = {};
 
 function bar(i) {
-  while (bars.length <= i) bars.push(generateBar(state.gen));
+  while (bars.length <= i) bars.push(generateBar(state.gen, Math.random, bars[bars.length - 1]));
   return bars[i];
 }
 
 // One bar per row on phones (like a printed reading sheet); more on wide screens.
 function maxPerRow() {
-  return width >= 600 ? 2 : 1;
+  return layout.perRow;
 }
 
 function row(r) {
@@ -51,7 +52,7 @@ function drawRow(r) {
   el.className = 'nrow ahead';
   try {
     const map = renderRow(el, bars.slice(info.start, info.start + info.count), {
-      width, firstBarIndex: info.start, showTimeSig: info.start === 0,
+      width, firstBarIndex: info.start, showTimeSig: info.start === 0, scale: layout.scale,
     });
     map.forEach((v, k) => noteMap.set(k, v));
   } catch (err) {
@@ -64,13 +65,16 @@ function drawRow(r) {
 export function reset() {
   const container = $('rd-notation');
   width = Math.floor(container.clientWidth || 360) - 18; // minus the row's thick edges
+  layout = rowLayout(width);
+  // A sideways tablet is short, so show one row fewer to keep the play buttons off the music.
+  visibleRows = document.documentElement.classList.contains('wide') ? 3 : 4;
   bars = [];
   rows = [];
   firstVisible = 0;
   noteMap = new Map();
   lastPlaying = null;
   container.innerHTML = '';
-  for (let r = 0; r < VISIBLE_ROWS; r++) container.append(drawRow(r));
+  for (let r = 0; r < visibleRows; r++) container.append(drawRow(r));
   markCurrent(0);
 }
 
@@ -102,7 +106,7 @@ function advanceTo(i) {
     old.el?.remove();
     old.el = null;
     firstVisible++;
-    container.append(drawRow(firstVisible + VISIBLE_ROWS - 1));
+    container.append(drawRow(firstVisible + visibleRows - 1));
   }
   markCurrent(r);
 }
@@ -158,7 +162,7 @@ export function isPlaying() {
 // along: a PlayAlong session or null. h.onStopped is called however playback ends.
 export function start(along, h = {}) {
   hooks = h;
-  if (firstVisible > 0 || !rows.length) reset();
+  if (firstVisible > 0 || needsRedraw()) reset();
   claim('reading', () => stopUi());
   playing = true;
   scheduler.start(makeSource(along), {
@@ -200,7 +204,9 @@ export function stop() {
 }
 
 export function needsRedraw() {
-  return !rows.length || Math.floor($('rd-notation').clientWidth) - 18 !== width;
+  const w = Math.floor($('rd-notation').clientWidth) - 18;
+  const l = rowLayout(w);
+  return !rows.length || w !== width || l.perRow !== layout.perRow || l.scale !== layout.scale;
 }
 
 export function invalidate() {

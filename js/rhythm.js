@@ -140,16 +140,36 @@ function makeCompoundGroup(startBeat, cells, settings, rng) {
   };
 }
 
-export function generateBar(settings, rng = Math.random) {
+// A beat identical to the one before it is re-rolled this often, so easy levels
+// (which only have a few beat patterns) don't keep repeating the same beat.
+const REROLL_SAME_BEAT = 0.6;
+
+// `prev` is the bar before this one: the new bar is never an exact copy of it.
+export function generateBar(settings, rng = Math.random, prev = null) {
+  for (let tries = 0; ; tries++) {
+    const bar = makeBar(settings, rng);
+    if (!prev || tries >= 20 || barKey(bar) !== barKey(prev)) return bar;
+  }
+}
+
+function barKey(bar) {
+  return bar.groups.map((g) => `${g.key}:${(g.accent || []).map(Number).join('')}:${(g.ghost || []).map(Number).join('')}`).join('|');
+}
+
+function makeBar(settings, rng) {
   const { num, den } = parseTimeSig(settings.timeSig);
   const groups = [];
   let beat = 0;
   const tripletChance = settings.triplets && den === 4 ? Math.min(0.2 + 0.035 * settings.complexity, 0.55) : 0;
+  const make = (len) => {
+    if (den === 8) return makeCompoundGroup(beat, len, settings, rng);
+    if (rng() < tripletChance) return makeTripletGroup(beat, settings, rng);
+    return makeStraightGroup(beat, settings, rng);
+  };
   for (const len of groupingFor(settings.timeSig)) {
-    let g;
-    if (den === 8) g = makeCompoundGroup(beat, len, settings, rng);
-    else if (rng() < tripletChance) g = makeTripletGroup(beat, settings, rng);
-    else g = makeStraightGroup(beat, settings, rng);
+    let g = make(len);
+    const last = groups[groups.length - 1];
+    if (last && groupKey(last) === groupKey(g) && rng() < REROLL_SAME_BEAT) g = make(len);
     groups.push(g);
     beat += len;
   }
@@ -162,8 +182,10 @@ export function generateBar(settings, rng = Math.random) {
   return { num, den, beats: num, groups };
 }
 
-export function generateRhythm(settings, rng = Math.random) {
-  return Array.from({ length: settings.bars }, () => generateBar(settings, rng));
+export function generateRhythm(settings, rng = Math.random, prev = null) {
+  const bars = [];
+  for (let i = 0; i < settings.bars; i++) bars.push(generateBar(settings, rng, bars[i - 1] || prev));
+  return bars;
 }
 
 // ---- Notation segments ----

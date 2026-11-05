@@ -625,6 +625,35 @@ async function tagNotes(page, noteSound) {
   });
 
   // ---------------- Offline / install ----------------
+  await test('big tablet: scales up, two bars per row with a bar line sideways, one upright, follows rotation', async (page) => {
+    const look = () => page.evaluate(() => ({
+      z: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--z')),
+      wide: document.documentElement.classList.contains('wide'),
+      rows: document.querySelectorAll('#r-notation .nrow').length,
+      lines: document.querySelectorAll('#r-notation .vf-barline rect').length,
+    }));
+    let v = await look();
+    assert.equal(v.z, 1, 'phones are not scaled');
+    await setGen(page, { bars: 4, timeSig: '4/4', complexity: 3, bpm: 200, loop: true, countIn: false });
+    await page.setViewportSize({ width: 1480, height: 924 });
+    await page.waitForTimeout(500);
+    v = await look();
+    assert.ok(v.z > 1.2 && v.wide, JSON.stringify(v));
+    assert.equal(v.rows, 2, 'two bars per row sideways');
+    assert.equal(v.lines, 2, 'a bar line between the two bars of each row');
+    await page.tap('#r-play');
+    await page.waitForTimeout(400);
+    await page.setViewportSize({ width: 924, height: 1480 });
+    await page.waitForTimeout(600);
+    v = await look();
+    assert.ok(v.z > 1.2 && !v.wide, JSON.stringify(v));
+    assert.equal(v.rows, 4, 'one bar per row upright, redrawn while playing');
+    assert.equal(v.lines, 0);
+    assert.ok(await isPlaying(page, '#r-play'), 'still playing after rotating');
+    await page.waitForFunction(() => document.querySelector('#r-notation .vf-stavenote.playing'), null, { timeout: 3000 });
+    await page.tap('#r-play');
+  });
+
   await test('PWA: service worker caches the app and it loads offline', async (page) => {
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 10000 });

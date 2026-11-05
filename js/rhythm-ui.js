@@ -1,5 +1,5 @@
 import { generateRhythm, generateBar, TIME_SIGNATURES } from './rhythm.js';
-import { renderRow, barMinWidth, setNoteClass } from './notation.js';
+import { renderRow, barMinWidth, setNoteClass, rowLayout } from './notation.js';
 import { state, set, on, save, refresh } from './store.js';
 import { scheduler, claim, release, isOwner } from './transport.js';
 import { PlayAlong } from './playalong.js';
@@ -43,7 +43,8 @@ function render() {
   const width = Math.floor(el.clientWidth || 360) - 18; // minus the row's thick edges
   // One bar per row on phones, like a printed exercise; two on wide screens if they fit.
   const need = Math.max(...rhythm.map(barMinWidth));
-  barsPerRow = width >= 600 && rhythm.length > 1 && need * 2 + 30 <= width ? 2 : 1;
+  const { perRow, scale } = rowLayout(width);
+  barsPerRow = perRow === 2 && rhythm.length > 1 && need * 2 + 30 <= width ? 2 : 1;
   el.innerHTML = '';
   noteMap = new Map();
   rowEls = [];
@@ -53,7 +54,7 @@ function render() {
       row.className = 'nrow';
       el.append(row);
       rowEls.push(row);
-      const map = renderRow(row, rhythm.slice(r, r + barsPerRow), { width, firstBarIndex: r, showTimeSig: r === 0 });
+      const map = renderRow(row, rhythm.slice(r, r + barsPerRow), { width, firstBarIndex: r, showTimeSig: r === 0, scale });
       map.forEach((v, k) => noteMap.set(k, v));
     }
   } catch (err) {
@@ -70,7 +71,8 @@ function newRhythm() {
     reading.reset();
     return;
   }
-  const r = generateRhythm(gen());
+  // Start from the bar that is showing, so a one-bar rhythm always changes.
+  const r = generateRhythm(gen(), Math.random, rhythm?.[rhythm.length - 1]);
   if (playing) {
     pending = r;
     toast('New rhythm starts on the next loop');
@@ -430,7 +432,11 @@ export function init() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (!$('tab-rhythm').hidden && !session) onShow();
+      if ($('tab-rhythm').hidden) return;
+      // Rotating mid-rhythm redraws right away; Reading Mode keeps its rows
+      // (they shrink to fit) and re-lays them out when it stops.
+      if (!session) onShow();
+      else if (!gen().readingMode) render();
     }, 200);
   });
   showMode();
